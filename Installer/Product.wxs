@@ -9,11 +9,18 @@
   <Package Name="Money Shot"
            Manufacturer="Daolyap &amp; iSaluki"
            Version="$(var.ProductVersion)"
-           UpgradeCode="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
+           UpgradeCode="A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
+           Scope="perMachine"
+           InstallerVersion="500">
     
-    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed."
+                  Schedule="afterInstallValidate" />
     
     <MediaTemplate EmbedCab="yes" />
+
+    <!-- Launch conditions: require minimum Windows 10 -->
+    <Launch Condition="VersionNT &gt;= 603"
+            Message="[ProductName] requires Windows 10 or later." />
 
     <!-- Use WiX UI for a graphical installer experience -->
     <ui:WixUI Id="WixUI_FeatureTree" />
@@ -25,10 +32,20 @@
     <!-- Define properties for customization -->
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
 
+    <!-- Ensure per-machine installation -->
+    <Property Id="ALLUSERS" Value="1" Secure="yes" />
+
+    <!-- Force complete file replacement on repair/upgrade -->
+    <Property Id="REINSTALLMODE" Value="amus" Secure="yes" />
+
+    <!-- Disable modify from Add/Remove Programs to prevent partial installs -->
+    <Property Id="ARPNOMODIFY" Value="1" />
+
     <!-- Define the directory structure -->
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Money Shot">
-        <Component Id="MainExecutable" Bitness="always64">
+        <Component Id="MainExecutable" Bitness="always64"
+                   Guid="B2C3D4E5-F6A7-8901-BCDE-F12345678901">
           <File Id="MoneyShotExe" 
                 Source="$(var.PublishDir)\MoneyShot.exe" 
                 KeyPath="yes">
@@ -41,10 +58,13 @@
                       Icon="MoneyShotIcon.exe"
                       Advertise="yes" />
           </File>
+          <!-- Clean up install directory on uninstall -->
+          <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
         </Component>
 
         <!-- Desktop shortcut component (optional) -->
-        <Component Id="DesktopShortcut" Bitness="always64">
+        <Component Id="DesktopShortcut" Bitness="always64"
+                   Guid="C3D4E5F6-A7B8-9012-CDEF-123456789012">
           <Shortcut Id="DesktopShortcut"
                     Directory="DesktopFolder"
                     Name="Money Shot"
@@ -58,20 +78,27 @@
                          Type="integer" 
                          Value="1" 
                          KeyPath="yes" />
+          <!-- Clean up registry key on uninstall -->
+          <RemoveRegistryKey Id="RemoveDesktopShortcutKey"
+                             Root="HKCU"
+                             Key="Software\[Manufacturer]\[ProductName]"
+                             Action="removeOnUninstall" />
         </Component>
 
         <!-- Startup registry entry component (optional) -->
-        <Component Id="StartupRegistry" Bitness="always64">
+        <Component Id="StartupRegistry" Bitness="always64"
+                   Guid="D4E5F6A7-B8C9-0123-DEFA-234567890123">
           <RegistryValue Root="HKCU" 
                          Key="Software\Microsoft\Windows\CurrentVersion\Run" 
                          Name="MoneyShot" 
-                         Value="[INSTALLFOLDER]MoneyShot.exe" 
+                         Value="&quot;[INSTALLFOLDER]MoneyShot.exe&quot;" 
                          Type="string" 
                          KeyPath="yes" />
         </Component>
         
         <!-- Include all published files -->
-        <Component Id="PublishedFiles" Bitness="always64">
+        <Component Id="PublishedFiles" Bitness="always64"
+                   Guid="E5F6A7B8-C9D0-1234-EFAB-345678901234">
           <File Id="MoneyShotDll" Source="$(var.PublishDir)\MoneyShot.dll" />
           <File Id="MoneyShotRuntimeConfig" Source="$(var.PublishDir)\MoneyShot.runtimeconfig.json" />
           <File Id="MoneyShotDepsJson" Source="$(var.PublishDir)\MoneyShot.deps.json" />

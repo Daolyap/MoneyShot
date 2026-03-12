@@ -5,10 +5,22 @@ This directory contains the WiX Toolset configuration for building the Money Sho
 ## Overview
 
 The MSI installer provides a proper Windows installation experience with:
-- Installation to `Program Files\Money Shot`
+- Per-machine installation to `Program Files\Money Shot` (requires elevation)
 - Desktop and Start Menu shortcuts
 - Add/Remove Programs integration
-- Proper upgrade/uninstall support
+- Proper upgrade/uninstall support with cleanup
+- Launch condition verifying Windows 10 or later
+
+## Security
+
+The installer follows industry-standard secure configuration practices:
+- **Per-machine scope**: Installs to `%ProgramFiles%` which is ACL-protected; standard users cannot modify installed binaries
+- **Elevation required**: The `Scope="perMachine"` attribute ensures UAC elevation is requested
+- **Stable component GUIDs**: All components have explicit GUIDs for reliable servicing and upgrades
+- **MajorUpgrade scheduling**: Uses `afterInstallValidate` to prevent downgrade attacks
+- **Clean uninstall**: `RemoveFolder` and `RemoveRegistryKey` elements ensure complete removal
+- **Quoted registry paths**: The startup registry value quotes the executable path to prevent path injection
+- **REINSTALLMODE=amus**: Forces complete file replacement on repair/upgrade
 
 ## Building Locally
 
@@ -38,8 +50,7 @@ To build the MSI installer locally on Windows:
 ## Automatic Builds
 
 The MSI is automatically built by the GitHub Actions workflow (`.github/workflows/build-msi.yml`) on:
-- Push to main/master branch
-- Pull requests
+- Pull requests to main/master
 - Release creation
 - Manual workflow dispatch
 
@@ -49,13 +60,10 @@ The MSI artifact is uploaded and available for download from the Actions tab.
 
 The installer configuration is defined in `Product.wxs`:
 - **UpgradeCode**: `A1B2C3D4-E5F6-7890-ABCD-EF1234567890` (must remain constant for upgrades)
-- **Version**: 1.0.0 (should be updated for new releases)
+- **Version**: Controlled by the `Version` property in `MoneyShot/MoneyShot.csproj`
 - **Installation Directory**: `C:\Program Files\Money Shot`
-- **Shortcuts**: Desktop and Start Menu
-
-## Versioning
-
-The version number is controlled by the `Version` property in `MoneyShot/MoneyShot.csproj` and the `Version` attribute in `Product.wxs`. These should be kept in sync.
+- **Shortcuts**: Desktop (optional) and Start Menu
+- **Startup**: Optional Windows startup integration (disabled by default)
 
 ## Notes
 
@@ -63,3 +71,4 @@ The version number is controlled by the `Version` property in `MoneyShot/MoneySh
 - Framework-dependent deployment (requires .NET 8 Runtime to be installed)
 - Uses embedded CAB files for simpler distribution
 - Supports major upgrades (newer versions can upgrade older ones)
+- Requires Windows Installer 5.0 or later (`InstallerVersion="500"`)
