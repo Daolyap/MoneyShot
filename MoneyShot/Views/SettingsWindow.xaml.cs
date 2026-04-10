@@ -49,6 +49,11 @@ public partial class SettingsWindow : Window
         RunOnStartupCheckbox.IsChecked = _settings.RunOnStartup;
         MinimizeToTrayCheckbox.IsChecked = _settings.MinimizeToTray;
         CheckForUpdatesCheckbox.IsChecked = _settings.CheckForUpdatesOnStartup;
+        if (_settingsService.TryGetWindowsPrintScreenDisabled(out var isPrintScreenDisabled))
+        {
+            _settings.DisableWindowsPrintScreen = isPrintScreenDisabled;
+        }
+
         DisableWindowsPrintScreenCheckbox.IsChecked = _settings.DisableWindowsPrintScreen;
         SavePathTextBox.Text = _settings.DefaultSavePath;
         
@@ -143,7 +148,7 @@ public partial class SettingsWindow : Window
                     "Partial Success", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             
-            _settingsService.SetWindowsPrintScreenDisabled(_settings.DisableWindowsPrintScreen);
+            var printScreenApplied = _settingsService.SetWindowsPrintScreenDisabled(_settings.DisableWindowsPrintScreen);
 
             // Reload hotkeys in the main window
             if (Application.Current.MainWindow is MainWindow mainWindow)
@@ -151,8 +156,14 @@ public partial class SettingsWindow : Window
                 mainWindow.ReloadHotKeys();
             }
 
-            MessageBox.Show("Settings saved successfully! Hotkeys have been updated.", 
-                "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            var successMessage = printScreenApplied
+                ? "Settings saved successfully! Hotkeys have been updated."
+                : "Settings saved, but Windows Print Screen integration could not be fully updated. You may need to reopen the app as admin or change this setting in Windows Settings > Accessibility > Keyboard.";
+
+            MessageBox.Show(successMessage, 
+                printScreenApplied ? "Success" : "Partial Success",
+                MessageBoxButton.OK,
+                printScreenApplied ? MessageBoxImage.Information : MessageBoxImage.Warning);
             Close();
         }
         catch (Exception ex)

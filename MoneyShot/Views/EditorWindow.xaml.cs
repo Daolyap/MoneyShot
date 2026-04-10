@@ -61,6 +61,7 @@ public partial class EditorWindow : Window
     }
     
     private const int FreehandMinDistance = 2; // Minimum pixel distance between points
+    private const double ShapeUpdateMinDistance = 1.5; // Minimum drag distance before updating shape geometry
     
     // Crop fields
     private Rectangle? _cropRectangle;
@@ -68,6 +69,7 @@ public partial class EditorWindow : Window
     
     // Freehand drawing fields
     private Polyline? _currentPolyline;
+    private Point _lastDrawPoint;
     
     // Cached pen for hit testing to avoid repeated allocations
     private static readonly Pen HitTestPen = new(Brushes.Black, 10);
@@ -308,6 +310,7 @@ public partial class EditorWindow : Window
 
         _isDrawing = true;
         _startPoint = clickPoint;
+        _lastDrawPoint = clickPoint;
 
         UIElement? element = _currentTool switch
         {
@@ -372,6 +375,16 @@ public partial class EditorWindow : Window
         if (!_isDrawing || _currentShape == null)
             return;
 
+        if (_currentTool != AnnotationTool.Freehand)
+        {
+            var deltaX = currentPoint.X - _lastDrawPoint.X;
+            var deltaY = currentPoint.Y - _lastDrawPoint.Y;
+            if ((deltaX * deltaX) + (deltaY * deltaY) < ShapeUpdateMinDistance * ShapeUpdateMinDistance)
+            {
+                return;
+            }
+        }
+
         switch (_currentTool)
         {
             case AnnotationTool.Rectangle:
@@ -391,6 +404,8 @@ public partial class EditorWindow : Window
                 UpdatePolyline(currentPoint);
                 break;
         }
+
+        _lastDrawPoint = currentPoint;
     }
 
     private void Canvas_MouseUp(object sender, MouseButtonEventArgs e)
@@ -981,6 +996,41 @@ public partial class EditorWindow : Window
         _resizeHandles.Add(CreateResizeHandle(left - 2 - handleSize/2, top + height/2 - handleSize/2, handleSize, handleColor)); // Left
         _resizeHandles.Add(CreateResizeHandle(left + width + 2 - handleSize/2, top + height/2 - handleSize/2, handleSize, handleColor)); // Right
     }
+
+    private void UpdateResizeHandles(double left, double top, double width, double height)
+    {
+        if (_resizeHandles.Count != 8)
+        {
+            CreateResizeHandles(left, top, width, height);
+            return;
+        }
+
+        var handleSize = _resizeHandles[0].Width;
+
+        Canvas.SetLeft(_resizeHandles[0], left - 2 - handleSize / 2);
+        Canvas.SetTop(_resizeHandles[0], top - 2 - handleSize / 2);
+
+        Canvas.SetLeft(_resizeHandles[1], left + width + 2 - handleSize / 2);
+        Canvas.SetTop(_resizeHandles[1], top - 2 - handleSize / 2);
+
+        Canvas.SetLeft(_resizeHandles[2], left - 2 - handleSize / 2);
+        Canvas.SetTop(_resizeHandles[2], top + height + 2 - handleSize / 2);
+
+        Canvas.SetLeft(_resizeHandles[3], left + width + 2 - handleSize / 2);
+        Canvas.SetTop(_resizeHandles[3], top + height + 2 - handleSize / 2);
+
+        Canvas.SetLeft(_resizeHandles[4], left + width / 2 - handleSize / 2);
+        Canvas.SetTop(_resizeHandles[4], top - 2 - handleSize / 2);
+
+        Canvas.SetLeft(_resizeHandles[5], left + width / 2 - handleSize / 2);
+        Canvas.SetTop(_resizeHandles[5], top + height + 2 - handleSize / 2);
+
+        Canvas.SetLeft(_resizeHandles[6], left - 2 - handleSize / 2);
+        Canvas.SetTop(_resizeHandles[6], top + height / 2 - handleSize / 2);
+
+        Canvas.SetLeft(_resizeHandles[7], left + width + 2 - handleSize / 2);
+        Canvas.SetTop(_resizeHandles[7], top + height / 2 - handleSize / 2);
+    }
     
     private Rectangle CreateResizeHandle(double x, double y, double size, SolidColorBrush color)
     {
@@ -1093,7 +1143,7 @@ public partial class EditorWindow : Window
         }
         
         // Update resize handles
-        CreateResizeHandles(left, top, shape.Width, shape.Height);
+        UpdateResizeHandles(left, top, shape.Width, shape.Height);
     }
 
     private void ClearSelection()
@@ -1169,6 +1219,28 @@ public partial class EditorWindow : Window
             
             Canvas.SetLeft(_selectionBorder, borderLeft + deltaX);
             Canvas.SetTop(_selectionBorder, borderTop + deltaY);
+        }
+
+        if ((element is Shape shape2 && element is not Line) || element is TextBlock)
+        {
+            var elementLeft = Canvas.GetLeft(element);
+            var elementTop = Canvas.GetTop(element);
+            if (double.IsNaN(elementLeft)) elementLeft = 0;
+            if (double.IsNaN(elementTop)) elementTop = 0;
+
+            var elementWidth = element is Shape shapeElement ? shapeElement.Width : ((TextBlock)element).ActualWidth;
+            var elementHeight = element is Shape shapeElement2 ? shapeElement2.Height : ((TextBlock)element).ActualHeight;
+
+            if (element is TextBlock textBlock)
+            {
+                if (elementWidth <= 0) elementWidth = textBlock.RenderSize.Width;
+                if (elementHeight <= 0) elementHeight = textBlock.RenderSize.Height;
+            }
+
+            if (elementWidth > 0 && elementHeight > 0)
+            {
+                UpdateResizeHandles(elementLeft, elementTop, elementWidth, elementHeight);
+            }
         }
     }
 

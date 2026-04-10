@@ -32,8 +32,6 @@
     <!-- Define properties for customization -->
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
 
-    <!-- Ensure per-machine installation -->
-    <Property Id="ALLUSERS" Value="1" Secure="yes" />
 
     <!-- Force complete file replacement on repair/upgrade -->
     <Property Id="REINSTALLMODE" Value="amus" Secure="yes" />

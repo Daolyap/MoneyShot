@@ -255,7 +255,7 @@
                         <Border Background="#15FFFFFF" BorderBrush="#25FFFFFF" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,15">
                             <StackPanel>
                                 <TextBlock Text="General" FontSize="18" FontWeight="Bold" Foreground="White" Margin="0,0,0,10"/>
-                                <CheckBox Name="StartInTrayCheckbox" Content="Start in system tray (only show when user requests)" Foreground="White" Margin="0,5"/>
+                                <CheckBox Name="StartInTrayCheckbox" Content="Start in system tray" Foreground="White" Margin="0,5"/>
                                 <CheckBox Name="RunOnStartupCheckbox" Content="Run on Windows startup" Foreground="White" Margin="0,5"/>
                                 <CheckBox Name="MinimizeToTrayCheckbox" Content="Minimize to system tray" Foreground="White" Margin="0,5"/>
                                 <CheckBox Name="CheckForUpdatesCheckbox" Content="Check for updates on startup" Foreground="White" Margin="0,5">
@@ -263,9 +263,9 @@
                                         <ToolTip Content="Automatically check for new versions when the application starts"/>
                                     </CheckBox.ToolTip>
                                 </CheckBox>
-                                <CheckBox Name="DisableWindowsPrintScreenCheckbox" Content="Disable Windows built-in Print Screen capture" Foreground="White" Margin="0,5">
+                                <CheckBox Name="DisableWindowsPrintScreenCheckbox" Content="Disable Windows built-in Print Screen snipping shortcut" Foreground="White" Margin="0,5">
                                     <CheckBox.ToolTip>
-                                        <ToolTip Content="Disables Windows' built-in 'Use Print Screen to open screen capture' setting"/>
+                                        <ToolTip Content="Controls the Windows setting 'Use Print Screen key to open screen capture'"/>
                                     </CheckBox.ToolTip>
                                 </CheckBox>
                             </StackPanel>
