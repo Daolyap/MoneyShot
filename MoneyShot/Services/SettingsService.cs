@@ -220,8 +220,9 @@ public class SettingsService
     {
         try
         {
-            // CreateSubKey is used intentionally so this setting can be applied even if the key/value is missing.
-            using var key = Registry.CurrentUser.CreateSubKey(@"Control Panel\Keyboard", true);
+            // Open existing key first; fall back to creating it only when missing so this setting can still be applied.
+            using var key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Keyboard", true)
+                ?? Registry.CurrentUser.CreateSubKey(@"Control Panel\Keyboard", true);
             if (key == null)
             {
                 System.Diagnostics.Debug.WriteLine("Unable to access keyboard settings in registry.");

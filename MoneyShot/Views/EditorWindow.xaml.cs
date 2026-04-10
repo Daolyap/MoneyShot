@@ -377,9 +377,9 @@ public partial class EditorWindow : Window
 
         if (_currentTool != AnnotationTool.Freehand)
         {
-            var deltaX = currentPoint.X - _lastDrawPoint.X;
-            var deltaY = currentPoint.Y - _lastDrawPoint.Y;
-            if ((deltaX * deltaX) + (deltaY * deltaY) < ShapeUpdateMinDistancePixels * ShapeUpdateMinDistancePixels)
+            var dx = currentPoint.X - _lastDrawPoint.X;
+            var dy = currentPoint.Y - _lastDrawPoint.Y;
+            if ((dx * dx) + (dy * dy) < ShapeUpdateMinDistancePixels * ShapeUpdateMinDistancePixels)
             {
                 return;
             }
