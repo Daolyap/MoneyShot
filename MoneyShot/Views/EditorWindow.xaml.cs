@@ -1221,20 +1221,30 @@ public partial class EditorWindow : Window
             Canvas.SetTop(_selectionBorder, borderTop + deltaY);
         }
 
-        if ((element is Shape shape2 && element is not Line) || element is TextBlock)
+        if ((element is Shape && element is not Line) || element is TextBlock)
         {
             var elementLeft = Canvas.GetLeft(element);
             var elementTop = Canvas.GetTop(element);
             if (double.IsNaN(elementLeft)) elementLeft = 0;
             if (double.IsNaN(elementTop)) elementTop = 0;
 
-            var elementWidth = element is Shape shapeElement ? shapeElement.Width : ((TextBlock)element).ActualWidth;
-            var elementHeight = element is Shape shapeElement2 ? shapeElement2.Height : ((TextBlock)element).ActualHeight;
-
+            double elementWidth;
+            double elementHeight;
             if (element is TextBlock textBlock)
             {
+                elementWidth = textBlock.ActualWidth;
+                elementHeight = textBlock.ActualHeight;
                 if (elementWidth <= 0) elementWidth = textBlock.RenderSize.Width;
                 if (elementHeight <= 0) elementHeight = textBlock.RenderSize.Height;
+            }
+            else if (element is Shape shapeElement)
+            {
+                elementWidth = shapeElement.Width;
+                elementHeight = shapeElement.Height;
+            }
+            else
+            {
+                return;
             }
 
             if (elementWidth > 0 && elementHeight > 0)
