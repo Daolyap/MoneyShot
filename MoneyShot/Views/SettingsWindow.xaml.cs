@@ -158,7 +158,7 @@ public partial class SettingsWindow : Window
 
             var successMessage = printScreenApplied
                 ? "Settings saved successfully! Hotkeys have been updated."
-                : "Settings saved, but Windows Print Screen integration could not be fully updated. You may need to reopen the app as admin or change this setting in Windows Settings > Accessibility > Keyboard.";
+                : "Settings saved, but Windows Print Screen integration could not be fully updated. You may need to reopen the app as admin or update the Print Screen snipping setting in Windows keyboard settings.";
 
             MessageBox.Show(successMessage, 
                 printScreenApplied ? "Success" : "Partial Success",

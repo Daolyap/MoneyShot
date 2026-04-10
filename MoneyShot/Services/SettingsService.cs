@@ -220,6 +220,7 @@ public class SettingsService
     {
         try
         {
+            // CreateSubKey is used intentionally so this setting can be applied even if the key/value is missing.
             using var key = Registry.CurrentUser.CreateSubKey(@"Control Panel\Keyboard", true);
             if (key == null)
             {

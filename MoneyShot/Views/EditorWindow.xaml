@@ -309,7 +309,7 @@
                     <Grid.RenderTransform>
                         <ScaleTransform x:Name="ZoomTransform" ScaleX="1" ScaleY="1" CenterX="0" CenterY="0"/>
                     </Grid.RenderTransform>
-                    <Image Name="ImageDisplay" RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                    <Image Name="ImageDisplay" />
                     <Canvas Name="DrawingCanvas" 
                             MouseDown="Canvas_MouseDown"
                             MouseMove="Canvas_MouseMove"

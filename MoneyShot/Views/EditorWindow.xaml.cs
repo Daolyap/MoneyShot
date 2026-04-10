@@ -61,7 +61,7 @@ public partial class EditorWindow : Window
     }
     
     private const int FreehandMinDistance = 2; // Minimum pixel distance between points
-    private const double ShapeUpdateMinDistance = 1.5; // Minimum drag distance before updating shape geometry
+    private const double ShapeUpdateMinDistancePixels = 1.5; // Minimum drag distance in pixels before updating shape geometry
     
     // Crop fields
     private Rectangle? _cropRectangle;
@@ -379,7 +379,7 @@ public partial class EditorWindow : Window
         {
             var deltaX = currentPoint.X - _lastDrawPoint.X;
             var deltaY = currentPoint.Y - _lastDrawPoint.Y;
-            if ((deltaX * deltaX) + (deltaY * deltaY) < ShapeUpdateMinDistance * ShapeUpdateMinDistance)
+            if ((deltaX * deltaX) + (deltaY * deltaY) < ShapeUpdateMinDistancePixels * ShapeUpdateMinDistancePixels)
             {
                 return;
             }
