@@ -42,11 +42,11 @@
     <!-- Define the directory structure -->
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Money Shot">
-        <Component Id="MainExecutable" Bitness="always64"
-                   Guid="B2C3D4E5-F6A7-8901-BCDE-F12345678901">
-          <File Id="MoneyShotExe" 
-                Source="$(var.PublishDir)\MoneyShot.exe" 
-                KeyPath="yes">
+      <Component Id="MainExecutable" Bitness="always64"
+                 Guid="B2C3D4E5-F6A7-8901-BCDE-F12345678901">
+        <File Id="MoneyShotExe" 
+              Source="$(var.PublishDir)\MoneyShot.exe" 
+              KeyPath="yes">
             <!-- Start Menu shortcut (always created) -->
             <Shortcut Id="StartMenuShortcut"
                       Directory="ProgramMenuFolder"
@@ -93,14 +93,6 @@
                          Type="string" 
                          KeyPath="yes" />
         </Component>
-        
-        <!-- Include all published files -->
-        <Component Id="PublishedFiles" Bitness="always64"
-                   Guid="E5F6A7B8-C9D0-1234-EFAB-345678901234">
-          <File Id="MoneyShotDll" Source="$(var.PublishDir)\MoneyShot.dll" />
-          <File Id="MoneyShotRuntimeConfig" Source="$(var.PublishDir)\MoneyShot.runtimeconfig.json" />
-          <File Id="MoneyShotDepsJson" Source="$(var.PublishDir)\MoneyShot.deps.json" />
-        </Component>
       </Directory>
     </StandardDirectory>
 
@@ -113,7 +105,6 @@
              Display="expand"
              ConfigurableDirectory="INSTALLFOLDER">
       <ComponentRef Id="MainExecutable" />
-      <ComponentRef Id="PublishedFiles" />
       
       <!-- Optional desktop shortcut feature -->
       <Feature Id="DesktopShortcutFeature" 
