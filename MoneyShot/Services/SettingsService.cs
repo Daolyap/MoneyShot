@@ -216,31 +216,69 @@ public class SettingsService
         }
     }
 
-    public void SetWindowsPrintScreenDisabled(bool disabled)
+    public bool SetWindowsPrintScreenDisabled(bool disabled)
     {
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Keyboard", true);
-            if (key != null)
+            // Open existing key first; fall back to creating it only when missing so this setting can still be applied.
+            using var key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Keyboard", true)
+                ?? Registry.CurrentUser.CreateSubKey(@"Control Panel\Keyboard", true);
+            if (key == null)
             {
-                // Set PrintScreenKeyForSnippingEnabled to 0 to disable, 1 to enable
-                // Note: This is the registry key that controls "Use Print Screen to open screen capture"
-                key.SetValue("PrintScreenKeyForSnippingEnabled", disabled ? 0 : 1, RegistryValueKind.DWord);
+                System.Diagnostics.Debug.WriteLine("Unable to access keyboard settings in registry.");
+                return false;
             }
-            else
-            {
-                throw new InvalidOperationException("Unable to access keyboard settings in registry.");
-            }
+
+            // Set PrintScreenKeyForSnippingEnabled to 0 to disable, 1 to enable
+            // This controls Windows' "Use Print Screen to open screen capture" setting
+            key.SetValue("PrintScreenKeyForSnippingEnabled", disabled ? 0 : 1, RegistryValueKind.DWord);
+            key.Flush();
+
+            return TryGetWindowsPrintScreenDisabled(out var isDisabled) && isDisabled == disabled;
         }
         catch (UnauthorizedAccessException ex)
         {
             System.Diagnostics.Debug.WriteLine($"Registry access denied: {ex.Message}");
-            // Don't throw - this is a non-critical feature
+            return false;
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Error setting Print Screen configuration: {ex.Message}");
-            // Don't throw - this is a non-critical feature
+            return false;
+        }
+    }
+
+    public bool TryGetWindowsPrintScreenDisabled(out bool disabled)
+    {
+        disabled = false;
+
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Keyboard", false);
+            if (key == null)
+            {
+                return false;
+            }
+
+            var value = key.GetValue("PrintScreenKeyForSnippingEnabled");
+            if (value is int intValue)
+            {
+                disabled = intValue == 0;
+                return true;
+            }
+
+            if (value is string stringValue && int.TryParse(stringValue, out var parsedValue))
+            {
+                disabled = parsedValue == 0;
+                return true;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error reading Print Screen configuration: {ex.Message}");
+            return false;
         }
     }
 }
