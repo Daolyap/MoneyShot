@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private readonly SaveService _saveService;
     private readonly SettingsService _settingsService;
     private readonly HotKeyService _hotKeyService;
+    private readonly AutoUpdateService _autoUpdateService;
     private NotifyIcon? _notifyIcon;
     
     // Maximum number of monitors that can have individual hotkeys (limited by number keys 1-9)
@@ -31,12 +32,13 @@ public partial class MainWindow : Window
         _saveService = new SaveService();
         _settingsService = new SettingsService();
         _hotKeyService = new HotKeyService();
+        _autoUpdateService = new AutoUpdateService();
 
         SetupSystemTray();
         Loaded += MainWindow_Loaded;
     }
 
-    private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         _hotKeyService.Initialize(this);
         RegisterHotKeys();
@@ -47,6 +49,43 @@ public partial class MainWindow : Window
         if (settings.StartInTray)
         {
             Hide();
+        }
+
+        if (settings.CheckForUpdatesOnStartup)
+        {
+            await CheckForUpdatesOnStartupAsync();
+        }
+    }
+
+    private async Task CheckForUpdatesOnStartupAsync()
+    {
+        try
+        {
+            var updateInfo = await _autoUpdateService.GetAvailableUpdateAsync();
+            if (updateInfo == null)
+            {
+                return;
+            }
+
+            var result = System.Windows.MessageBox.Show(
+                $"A new version of Money Shot is available ({updateInfo.RemoteVersion}). Install now?",
+                "Update Available",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Information);
+
+            if (result != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            await _autoUpdateService.StageAndPrepareUpdateAsync(updateInfo);
+            _hotKeyService.UnregisterAll();
+            _notifyIcon?.Dispose();
+            Application.Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Auto-update check failed: {ex.Message}");
         }
     }
 

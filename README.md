@@ -138,7 +138,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - [ ] Image effects (drop shadow, borders)
 - [ ] Screenshot history
 - [ ] Quick share to cloud services
-- [ ] Auto-update functionality
+- [x] Auto-update functionality
 
 ## License
 
@@ -160,4 +160,3 @@ If you encounter any issues or have suggestions, please [open an issue](https://
 ---
 
 **Note**: This application is built specifically for Windows 11+ and requires .NET 8 Runtime to be installed.
-
