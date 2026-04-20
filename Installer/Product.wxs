@@ -18,8 +18,8 @@
     
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- Launch conditions: require Windows 10+, while allowing Win11 systems that report VersionNT=603 -->
-    <Launch Condition="VersionNT &gt;= 1000 OR (VersionNT = 603 AND WindowsBuild &gt;= 22000)"
+    <!-- Launch conditions: require Windows 10+, while allowing Win11 systems that can be detected via WindowsBuild -->
+    <Launch Condition="VersionNT &gt;= 1000 OR WindowsBuild &gt;= 22000"
             Message="[ProductName] requires Windows 10 or later." />
 
     <!-- Use WiX UI for a graphical installer experience -->
