@@ -23,11 +23,21 @@ public sealed class AutoUpdateService
 
     public AutoUpdateService(HttpClient? httpClient = null)
     {
-        _httpClient = httpClient ?? new HttpClient();
-        _httpClient.Timeout = TimeSpan.FromSeconds(20);
+        if (httpClient == null)
+        {
+            _httpClient = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(20)
+            };
+        }
+        else
+        {
+            _httpClient = httpClient;
+        }
+
         if (!_httpClient.DefaultRequestHeaders.UserAgent.Any())
         {
-            _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MoneyShot", "1.0"));
+            _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MoneyShot", GetLocalVersion().ToString()));
         }
     }
 
@@ -134,7 +144,7 @@ public sealed class AutoUpdateService
             response.EnsureSuccessStatusCode();
 
             await using var downloadStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            await using var fileStream = new FileStream(destinationPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            await using var fileStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
             await downloadStream.CopyToAsync(fileStream, cancellationToken);
         }
         catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
@@ -159,7 +169,7 @@ public sealed class AutoUpdateService
 
             if (executableEntry == null)
             {
-                throw new InvalidOperationException("Update ZIP does not contain MoneyShot executable.");
+                throw new InvalidOperationException($"Update ZIP does not contain expected executable: {Path.GetFileName(stagedExecutablePath)}.");
             }
 
             executableEntry.ExtractToFile(stagedExecutablePath, true);
@@ -209,38 +219,50 @@ public sealed class AutoUpdateService
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            Process.Start(new ProcessStartInfo
+            var process = Process.Start(new ProcessStartInfo
             {
                 FileName = scriptPath,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden,
                 WorkingDirectory = Path.GetDirectoryName(scriptPath) ?? Path.GetTempPath()
             });
+            if (process == null)
+            {
+                throw new InvalidOperationException("Failed to start the Windows update script.");
+            }
             return;
         }
 
-        Process.Start(new ProcessStartInfo
+        var shellProcess = Process.Start(new ProcessStartInfo
         {
-            FileName = "/bin/sh",
+            FileName = "sh",
             Arguments = $"\"{scriptPath}\"",
             UseShellExecute = false,
             CreateNoWindow = true,
             WorkingDirectory = Path.GetDirectoryName(scriptPath) ?? Path.GetTempPath()
         });
+        if (shellProcess == null)
+        {
+            throw new InvalidOperationException("Failed to start the Unix update script.");
+        }
     }
 
     private static string BuildWindowsSwapScript(string targetExecutablePath, string stagedExecutablePath)
     {
+        var targetExecutableName = Path.GetFileName(targetExecutablePath);
+        var escapedTargetPath = EscapeBatchValue(targetExecutablePath);
+        var escapedStagedPath = EscapeBatchValue(stagedExecutablePath);
+        var escapedTargetExecutableName = EscapeBatchValue(targetExecutableName);
+
         return $"""
         @echo off
         setlocal
         
-        set "TARGET={targetExecutablePath}"
-        set "STAGED={stagedExecutablePath}"
+        set "TARGET={escapedTargetPath}"
+        set "STAGED={escapedStagedPath}"
         
         :WAIT_LOOP
-        tasklist /FI "IMAGENAME eq {Path.GetFileName(targetExecutablePath)}" 2>NUL | find /I "{Path.GetFileName(targetExecutablePath)}" >NUL
+        tasklist /FI "IMAGENAME eq {escapedTargetExecutableName}" 2>NUL | find /I "{escapedTargetExecutableName}" >NUL
         if not errorlevel 1 (
             timeout /T 1 /NOBREAK >NUL
             goto WAIT_LOOP
@@ -256,10 +278,13 @@ public sealed class AutoUpdateService
 
     private static string BuildUnixSwapScript(string targetExecutablePath, string stagedExecutablePath)
     {
+        var escapedTargetPath = EscapeShellSingleQuoted(targetExecutablePath);
+        var escapedStagedPath = EscapeShellSingleQuoted(stagedExecutablePath);
+
         return $"""
         #!/bin/sh
-        TARGET="{targetExecutablePath}"
-        STAGED="{stagedExecutablePath}"
+        TARGET={escapedTargetPath}
+        STAGED={escapedStagedPath}
         
         while pgrep -f "$TARGET" >/dev/null 2>&1; do
           sleep 1
@@ -270,6 +295,13 @@ public sealed class AutoUpdateService
         "$TARGET" >/dev/null 2>&1 &
         rm -- "$0"
         """;
+    }
+
+    private static string EscapeBatchValue(string value) => value.Replace("%", "%%", StringComparison.Ordinal);
+
+    private static string EscapeShellSingleQuoted(string value)
+    {
+        return $"'{value.Replace("'", "'\"'\"'", StringComparison.Ordinal)}'";
     }
 
     private sealed class GitHubReleaseResponse

@@ -40,20 +40,27 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        _hotKeyService.Initialize(this);
-        RegisterHotKeys();
-        PopulateMonitorButtons();
-        
-        // Check if app should start in tray
-        var settings = _settingsService.LoadSettings();
-        if (settings.StartInTray)
+        try
         {
-            Hide();
-        }
+            _hotKeyService.Initialize(this);
+            RegisterHotKeys();
+            PopulateMonitorButtons();
+            
+            // Check if app should start in tray
+            var settings = _settingsService.LoadSettings();
+            if (settings.StartInTray)
+            {
+                Hide();
+            }
 
-        if (settings.CheckForUpdatesOnStartup)
+            if (settings.CheckForUpdatesOnStartup)
+            {
+                await CheckForUpdatesOnStartupAsync();
+            }
+        }
+        catch (Exception ex)
         {
-            await CheckForUpdatesOnStartupAsync();
+            System.Diagnostics.Debug.WriteLine($"Main window startup failed: {ex.Message}");
         }
     }
 
@@ -68,7 +75,7 @@ public partial class MainWindow : Window
             }
 
             var result = System.Windows.MessageBox.Show(
-                $"A new version of Money Shot is available ({updateInfo.RemoteVersion}). Install now?",
+                $"A new version of MoneyShot is available ({updateInfo.RemoteVersion}). Install now?",
                 "Update Available",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Information);
