@@ -178,6 +178,7 @@
 
                         <!-- Quick Actions -->
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <Button Content="🔄 Check for Updates" Click="CheckForUpdates_Click" Style="{StaticResource GlassButton}" Padding="15,10" Margin="5"/>
                             <Button Content="⚙️ Settings" Click="Settings_Click" Style="{StaticResource GlassButton}" Padding="15,10" Margin="5"/>
                             <Button Content="ℹ️ About" Click="About_Click" Style="{StaticResource GlassButton}" Padding="15,10" Margin="5"/>
                         </StackPanel>

@@ -64,13 +64,23 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task CheckForUpdatesOnStartupAsync()
+    private Task CheckForUpdatesOnStartupAsync() => CheckForUpdatesAsync(false);
+
+    private async Task CheckForUpdatesAsync(bool notifyWhenUpToDate)
     {
         try
         {
             var updateInfo = await _autoUpdateService.GetAvailableUpdateAsync();
             if (updateInfo == null)
             {
+                if (notifyWhenUpToDate)
+                {
+                    System.Windows.MessageBox.Show(
+                        "You're already on the latest version of MoneyShot.",
+                        "Up to Date",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
                 return;
             }
 
@@ -92,7 +102,18 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Auto-update check failed: {ex.Message}");
+            if (notifyWhenUpToDate)
+            {
+                System.Windows.MessageBox.Show(
+                    $"Failed to check for updates: {ex.Message}",
+                    "Update Check Failed",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"Auto-update check failed: {ex.Message}");
+            }
         }
     }
 
@@ -232,6 +253,7 @@ public partial class MainWindow : Window
         }
         
         contextMenu.Items.Add("-");
+        contextMenu.Items.Add("Check for Updates", null, async (s, e) => await CheckForUpdatesAsync(true));
         contextMenu.Items.Add("Settings", null, (s, e) => ShowSettings());
         contextMenu.Items.Add("-");
         contextMenu.Items.Add("Show Window", null, (s, e) => ShowMainWindow());
@@ -358,6 +380,11 @@ public partial class MainWindow : Window
     private void CaptureRegion_Click(object sender, RoutedEventArgs e)
     {
         CaptureRegion();
+    }
+
+    private async void CheckForUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        await CheckForUpdatesAsync(true);
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e)
