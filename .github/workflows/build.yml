@@ -52,8 +52,8 @@ jobs:
     - name: Build
       run: dotnet build MoneyShot/MoneyShot.csproj --configuration Release --no-restore /p:AssemblyVersion=${{ steps.get_version.outputs.version }}.${{ steps.get_version.outputs.build_number }} /p:FileVersion=${{ steps.get_version.outputs.version }}.${{ steps.get_version.outputs.build_number }}
 
-    - name: Publish
-      run: dotnet publish MoneyShot/MoneyShot.csproj --configuration Release --output ./publish --no-build
+    - name: Publish (self-contained single-file)
+      run: dotnet publish MoneyShot/MoneyShot.csproj --configuration Release --output ./publish --runtime win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

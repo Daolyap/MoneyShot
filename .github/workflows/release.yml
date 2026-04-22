@@ -59,8 +59,8 @@ jobs:
     - name: Build
       run: dotnet build MoneyShot/MoneyShot.csproj --configuration Release --no-restore /p:VersionSuffix=build.${{ github.run_number }} /p:AssemblyVersion=${{ steps.get_version.outputs.version }}.${{ github.run_number }} /p:FileVersion=${{ steps.get_version.outputs.version }}.${{ github.run_number }}
 
-    - name: Publish
-      run: dotnet publish MoneyShot/MoneyShot.csproj --configuration Release --output ./publish --no-build --self-contained false
+    - name: Publish (self-contained single-file)
+      run: dotnet publish MoneyShot/MoneyShot.csproj --configuration Release --output ./publish --runtime win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
 
     - name: Create Release ZIP
       shell: pwsh
@@ -122,7 +122,7 @@ jobs:
           ### ⚙️ Requirements
 
           - Windows 10 or Windows 11
-          - .NET 8 Runtime (will prompt to install if missing)
+          - No additional .NET runtime required (bundled)
 
           ### 📝 Changes
 
