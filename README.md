@@ -1,6 +1,6 @@
 # Money Shot
 
-A modern, feature-rich screenshot tool built for Windows 11+ with comprehensive annotation capabilities.
+A modern, feature-rich screenshot tool built for Windows with comprehensive annotation capabilities.
 
 ## Features
 
