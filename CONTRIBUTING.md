@@ -17,7 +17,7 @@ When creating a bug report, include:
 - **Steps to reproduce** the issue
 - **Expected behavior**
 - **Actual behavior**
-- **Screenshots** if applicable
+- **Screenshots** if applicable (preferably taken with Money Shot)
 - **System information**:
   - Windows version
   - .NET version
