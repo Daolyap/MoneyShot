@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <rect width="1200" height="700" fill="#1a213e"/>
+  <text x="24" y="38" fill="#ffffff" font-size="24" font-family="Segoe UI, Arial">Money Shot UI Changes Preview</text>
+
+  <rect x="30" y="70" width="540" height="260" rx="14" fill="#283257" stroke="#78a0ff" stroke-width="2"/>
+  <text x="50" y="106" fill="#ffffff" font-size="20" font-family="Segoe UI, Arial">Settings &gt; General</text>
+  <text x="50" y="140" fill="#e0e0e0" font-size="16" font-family="Segoe UI, Arial">☑ Start in system tray</text>
+  <text x="50" y="168" fill="#e0e0e0" font-size="16" font-family="Segoe UI, Arial">☑ Check for updates on startup</text>
+  <text x="50" y="196" fill="#e0e0e0" font-size="16" font-family="Segoe UI, Arial">☑ Disable Windows built-in Print Screen snipping shortcut</text>
+  <text x="50" y="224" fill="#b4ffb4" font-size="16" font-family="Segoe UI, Arial">☑ Money Shot UI Invisibility Cloak</text>
+  <text x="70" y="250" fill="#b4ffb4" font-size="15" font-family="Segoe UI, Arial">Tip: hide UI from screenshots (enabled by default)</text>
+
+  <rect x="620" y="70" width="540" height="260" rx="14" fill="#283257" stroke="#78a0ff" stroke-width="2"/>
+  <text x="640" y="106" fill="#ffffff" font-size="20" font-family="Segoe UI, Arial">Editor Toolbar</text>
+  <text x="640" y="140" fill="#e0e0e0" font-size="16" font-family="Segoe UI, Arial">Color: [Red] [Blue] [Green] ...</text>
+  <text x="640" y="168" fill="#b4ffb4" font-size="16" font-family="Segoe UI, Arial">Text BG: [Transparent ▼]</text>
+  <text x="640" y="196" fill="#e0e0e0" font-size="16" font-family="Segoe UI, Arial">Options: Transparent, White, Black, Yellow, Red, Blue, Green</text>
+  <text x="640" y="224" fill="#b4ffb4" font-size="16" font-family="Segoe UI, Arial">Undo now records resize actions</text>
+
+  <rect x="30" y="370" width="1130" height="280" rx="14" fill="#283257" stroke="#78a0ff" stroke-width="2"/>
+  <text x="50" y="406" fill="#ffffff" font-size="20" font-family="Segoe UI, Arial">About Money Shot (updated)</text>
+  <text x="50" y="438" fill="#e0e0e0" font-size="16" font-family="Consolas, monospace">---------------------------</text>
+  <text x="50" y="466" fill="#e0e0e0" font-size="16" font-family="Segoe UI, Arial">Money Shot - Incredible AI Slop</text>
+  <text x="50" y="494" fill="#e0e0e0" font-size="16" font-family="Segoe UI, Arial">Developed by Daolyap &amp; iSaluki</text>
+  <text x="50" y="522" fill="#e0e0e0" font-size="16" font-family="Segoe UI, Arial">Features include: Disable default print screen behaviour</text>
+  <text x="50" y="550" fill="#e0e0e0" font-size="16" font-family="Segoe UI, Arial">Contact: Features/issues URL and security email</text>
+  <text x="50" y="578" fill="#e0e0e0" font-size="16" font-family="Consolas, monospace">---------------------------  Cheers!  ---------------------------</text>
+</svg>
