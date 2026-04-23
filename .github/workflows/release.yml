@@ -132,6 +132,6 @@ jobs:
           ${{ env.ZIP_NAME }}
           ${{ env.MSI_NAME }}
         draft: false
-        prerelease: true
+        prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -188,8 +188,6 @@
                     <StackPanel Grid.Row="2" Margin="0,20,0,10">
                         <TextBlock Text="Tip: Hotkeys are customizable in Settings" 
                                    FontSize="12" Foreground="#888888" HorizontalAlignment="Center" TextWrapping="Wrap"/>
-                        <TextBlock Text="The app will minimize to system tray when closed" 
-                                   FontSize="12" Foreground="#888888" HorizontalAlignment="Center" Margin="0,5,0,0" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Grid>
             </ScrollViewer>

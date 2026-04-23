@@ -418,7 +418,6 @@ public partial class MainWindow : Window
         var monitorHotkeys = screens.Count > 1 ? $"\n• Ctrl+Shift+1-{Math.Min(screens.Count, MaxMonitorHotkeys)} - Capture individual monitors" : "";
         
         System.Windows.MessageBox.Show(
-            "---------------------------\n" +
             "Money Shot - Incredible AI Slop\n\n" +
             "Version 2.0.0\n\n" +
             "Developed by Daolyap & iSaluki\n\n" +
@@ -437,10 +436,7 @@ public partial class MainWindow : Window
             monitorHotkeys +
             "\n\nContact:\n" +
             "Features - https://github.com/daolyap/moneyshot/issues\n" +
-            "Security - moneyshot@daolyap.dev\n" +
-            "---------------------------\n" +
-            "Cheers!\n" +
-            "---------------------------",
+            "Security - moneyshot@daolyap.dev",
             "About Money Shot",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
