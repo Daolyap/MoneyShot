@@ -103,7 +103,7 @@ public sealed class AutoUpdateService
             var message = ex.StatusCode switch
             {
                 HttpStatusCode.Forbidden => "GitHub Releases endpoint rejected the request (403). This is often due to API rate limits or network policy restrictions.",
-                HttpStatusCode.Unauthorized => "GitHub Releases endpoint rejected the request (401). If you use a token, verify MONEYSHOT_GITHUB_TOKEN.",
+                HttpStatusCode.Unauthorized => "GitHub Releases endpoint rejected the request (401). Public releases normally do not require authentication; if you configured MONEYSHOT_GITHUB_TOKEN, verify it is valid.",
                 HttpStatusCode.NotFound => "GitHub Releases endpoint returned 404. Please verify the repository release configuration.",
                 _ => "Failed to contact GitHub Releases endpoint."
             };
