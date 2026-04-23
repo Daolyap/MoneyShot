@@ -264,7 +264,6 @@ public partial class MainWindow : Window
         
         contextMenu.Items.Add("-");
         contextMenu.Items.Add("Check for Updates", null, async (s, e) => await CheckForUpdatesAsync(showUpToDateMessage: true, showErrorsToUser: true));
-        contextMenu.Items.Add("-");
         contextMenu.Items.Add("Settings", null, (s, e) => ShowSettings());
         contextMenu.Items.Add("-");
         contextMenu.Items.Add("Show Window", null, (s, e) => ShowMainWindow());

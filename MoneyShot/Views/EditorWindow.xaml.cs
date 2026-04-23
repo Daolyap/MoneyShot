@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Linq;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
@@ -1478,13 +1477,15 @@ public partial class EditorWindow : Window
 
         try
         {
-            ClearSelection();
-
             var previousImage = _originalImage;
-            var previousElements = DrawingCanvas.Children
-                .Cast<UIElement>()
-                .Where(element => element != _cropRectangle && element != _selectionBorder && !_resizeHandles.Contains(element))
-                .ToList();
+            var previousElements = new List<UIElement>();
+            foreach (UIElement element in DrawingCanvas.Children)
+            {
+                if (element != _cropRectangle && element != _selectionBorder && !_resizeHandles.Contains(element))
+                {
+                    previousElements.Add(element);
+                }
+            }
             var previousNumberCounter = _numberCounter;
 
             // Create cropped bitmap
@@ -1497,6 +1498,7 @@ public partial class EditorWindow : Window
 
             // Clear all annotations including crop rectangle
             DrawingCanvas.Children.Clear();
+            ClearSelection();
             _cropRectangle = null;
             _numberCounter = 1;
 
