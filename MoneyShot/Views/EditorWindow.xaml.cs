@@ -1239,13 +1239,13 @@ public partial class EditorWindow : Window
         }
         else if (element is TextBlock textBlock)
         {
-            var widthScale = _originalWidth > 0 ? newWidth / _originalWidth : 1;
-            var heightScale = _originalHeight > 0 ? newHeight / _originalHeight : 1;
             var scale = _resizeMode switch
             {
-                ElementResizeMode.Left or ElementResizeMode.Right => widthScale,
-                ElementResizeMode.Top or ElementResizeMode.Bottom => heightScale,
-                _ => Math.Min(widthScale, heightScale)
+                ElementResizeMode.Left or ElementResizeMode.Right => _originalWidth > 0 ? newWidth / _originalWidth : 1,
+                ElementResizeMode.Top or ElementResizeMode.Bottom => _originalHeight > 0 ? newHeight / _originalHeight : 1,
+                _ => Math.Min(
+                    _originalWidth > 0 ? newWidth / _originalWidth : 1,
+                    _originalHeight > 0 ? newHeight / _originalHeight : 1)
             };
             scale = Math.Max(MinTextScaleFactor, scale);
             textBlock.FontSize = Math.Max(MinTextFontSize, _originalTextFontSize * scale);
@@ -1498,7 +1498,9 @@ public partial class EditorWindow : Window
 
             // Clear all annotations including crop rectangle
             DrawingCanvas.Children.Clear();
-            ClearSelection();
+            _selectedElement = null;
+            _selectionBorder = null;
+            _resizeHandles.Clear();
             _cropRectangle = null;
             _numberCounter = 1;
 
