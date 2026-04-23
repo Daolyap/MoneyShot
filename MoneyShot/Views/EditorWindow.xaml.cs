@@ -1314,32 +1314,32 @@ public partial class EditorWindow : Window
             case ElementResizeMode.BottomLeft:
                 newWidth = Math.Max(MinResizeDimension, _originalWidth - deltaX);
                 newHeight = Math.Max(MinResizeDimension, _originalHeight + deltaY);
-                newLeft = _originalLeft + deltaX;
+                newLeft = _originalLeft + (_originalWidth - newWidth);
                 break;
             case ElementResizeMode.TopRight:
                 newWidth = Math.Max(MinResizeDimension, _originalWidth + deltaX);
                 newHeight = Math.Max(MinResizeDimension, _originalHeight - deltaY);
-                newTop = _originalTop + deltaY;
+                newTop = _originalTop + (_originalHeight - newHeight);
                 break;
             case ElementResizeMode.TopLeft:
                 newWidth = Math.Max(MinResizeDimension, _originalWidth - deltaX);
                 newHeight = Math.Max(MinResizeDimension, _originalHeight - deltaY);
-                newLeft = _originalLeft + deltaX;
-                newTop = _originalTop + deltaY;
+                newLeft = _originalLeft + (_originalWidth - newWidth);
+                newTop = _originalTop + (_originalHeight - newHeight);
                 break;
             case ElementResizeMode.Right:
                 newWidth = Math.Max(MinResizeDimension, _originalWidth + deltaX);
                 break;
             case ElementResizeMode.Left:
                 newWidth = Math.Max(MinResizeDimension, _originalWidth - deltaX);
-                newLeft = _originalLeft + deltaX;
+                newLeft = _originalLeft + (_originalWidth - newWidth);
                 break;
             case ElementResizeMode.Bottom:
                 newHeight = Math.Max(MinResizeDimension, _originalHeight + deltaY);
                 break;
             case ElementResizeMode.Top:
                 newHeight = Math.Max(MinResizeDimension, _originalHeight - deltaY);
-                newTop = _originalTop + deltaY;
+                newTop = _originalTop + (_originalHeight - newHeight);
                 break;
         }
 
