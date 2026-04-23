@@ -1297,51 +1297,50 @@ public partial class EditorWindow : Window
     
     private void ResizeElement(UIElement element, Point currentPoint)
     {
-        var deltaX = currentPoint.X - _resizeStartPoint.X;
-        var deltaY = currentPoint.Y - _resizeStartPoint.Y;
+        var originalRight = _originalLeft + _originalWidth;
+        var originalBottom = _originalTop + _originalHeight;
 
-        var newLeft = _originalLeft;
-        var newTop = _originalTop;
-        var newWidth = _originalWidth;
-        var newHeight = _originalHeight;
+        var leftEdge = _originalLeft;
+        var topEdge = _originalTop;
+        var rightEdge = originalRight;
+        var bottomEdge = originalBottom;
 
         switch (_resizeMode)
         {
             case ElementResizeMode.BottomRight:
-                newWidth = Math.Max(MinResizeDimension, _originalWidth + deltaX);
-                newHeight = Math.Max(MinResizeDimension, _originalHeight + deltaY);
+                rightEdge = Math.Max(_originalLeft + MinResizeDimension, currentPoint.X);
+                bottomEdge = Math.Max(_originalTop + MinResizeDimension, currentPoint.Y);
                 break;
             case ElementResizeMode.BottomLeft:
-                newWidth = Math.Max(MinResizeDimension, _originalWidth - deltaX);
-                newHeight = Math.Max(MinResizeDimension, _originalHeight + deltaY);
-                newLeft = _originalLeft + (_originalWidth - newWidth);
+                leftEdge = Math.Min(currentPoint.X, originalRight - MinResizeDimension);
+                bottomEdge = Math.Max(_originalTop + MinResizeDimension, currentPoint.Y);
                 break;
             case ElementResizeMode.TopRight:
-                newWidth = Math.Max(MinResizeDimension, _originalWidth + deltaX);
-                newHeight = Math.Max(MinResizeDimension, _originalHeight - deltaY);
-                newTop = _originalTop + (_originalHeight - newHeight);
+                rightEdge = Math.Max(_originalLeft + MinResizeDimension, currentPoint.X);
+                topEdge = Math.Min(currentPoint.Y, originalBottom - MinResizeDimension);
                 break;
             case ElementResizeMode.TopLeft:
-                newWidth = Math.Max(MinResizeDimension, _originalWidth - deltaX);
-                newHeight = Math.Max(MinResizeDimension, _originalHeight - deltaY);
-                newLeft = _originalLeft + (_originalWidth - newWidth);
-                newTop = _originalTop + (_originalHeight - newHeight);
+                leftEdge = Math.Min(currentPoint.X, originalRight - MinResizeDimension);
+                topEdge = Math.Min(currentPoint.Y, originalBottom - MinResizeDimension);
                 break;
             case ElementResizeMode.Right:
-                newWidth = Math.Max(MinResizeDimension, _originalWidth + deltaX);
+                rightEdge = Math.Max(_originalLeft + MinResizeDimension, currentPoint.X);
                 break;
             case ElementResizeMode.Left:
-                newWidth = Math.Max(MinResizeDimension, _originalWidth - deltaX);
-                newLeft = _originalLeft + (_originalWidth - newWidth);
+                leftEdge = Math.Min(currentPoint.X, originalRight - MinResizeDimension);
                 break;
             case ElementResizeMode.Bottom:
-                newHeight = Math.Max(MinResizeDimension, _originalHeight + deltaY);
+                bottomEdge = Math.Max(_originalTop + MinResizeDimension, currentPoint.Y);
                 break;
             case ElementResizeMode.Top:
-                newHeight = Math.Max(MinResizeDimension, _originalHeight - deltaY);
-                newTop = _originalTop + (_originalHeight - newHeight);
+                topEdge = Math.Min(currentPoint.Y, originalBottom - MinResizeDimension);
                 break;
         }
+
+        var newLeft = leftEdge;
+        var newTop = topEdge;
+        var newWidth = Math.Max(MinResizeDimension, rightEdge - leftEdge);
+        var newHeight = Math.Max(MinResizeDimension, bottomEdge - topEdge);
 
         if (element is Shape shape && element is not Line)
         {
