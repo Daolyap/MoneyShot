@@ -68,9 +68,29 @@ public partial class MainWindow : Window
     {
         try
         {
+            await CheckForUpdatesAsync(showUpToDateMessage: false, showErrorsToUser: false);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Auto-update check failed: {ex.Message}");
+        }
+    }
+
+    private async Task CheckForUpdatesAsync(bool showUpToDateMessage, bool showErrorsToUser)
+    {
+        try
+        {
             var updateInfo = await _autoUpdateService.GetAvailableUpdateAsync();
             if (updateInfo == null)
             {
+                if (showUpToDateMessage)
+                {
+                    System.Windows.MessageBox.Show(
+                        "You already have the latest version of Money Shot.",
+                        "No Updates Available",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
                 return;
             }
 
@@ -92,7 +112,18 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Auto-update check failed: {ex.Message}");
+            if (showErrorsToUser)
+            {
+                System.Windows.MessageBox.Show(
+                    $"Failed to check for updates: {ex.Message}",
+                    "Update Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"Auto-update check failed: {ex.Message}");
+            }
         }
     }
 
@@ -231,6 +262,8 @@ public partial class MainWindow : Window
             }
         }
         
+        contextMenu.Items.Add("-");
+        contextMenu.Items.Add("Check for Updates", null, async (s, e) => await CheckForUpdatesAsync(showUpToDateMessage: true, showErrorsToUser: true));
         contextMenu.Items.Add("-");
         contextMenu.Items.Add("Settings", null, (s, e) => ShowSettings());
         contextMenu.Items.Add("-");
@@ -390,6 +423,11 @@ public partial class MainWindow : Window
             "About Money Shot",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
+    }
+
+    private async void CheckForUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        await CheckForUpdatesAsync(showUpToDateMessage: true, showErrorsToUser: true);
     }
 
     private void Window_StateChanged(object sender, EventArgs e)
