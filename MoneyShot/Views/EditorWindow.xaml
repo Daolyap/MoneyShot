@@ -260,6 +260,25 @@
                             </Button>
                         </StackPanel>
 
+                        <!-- Text Background -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,15,0">
+                            <TextBlock Text="Text BG:" Foreground="White" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <ComboBox Name="TextBackgroundComboBox"
+                                      Width="125"
+                                      Background="#3E3E42"
+                                      Foreground="White"
+                                      BorderBrush="#555"
+                                      SelectionChanged="TextBackgroundComboBox_SelectionChanged">
+                                <ComboBoxItem Content="Transparent" IsSelected="True"/>
+                                <ComboBoxItem Content="White"/>
+                                <ComboBoxItem Content="Black"/>
+                                <ComboBoxItem Content="Yellow"/>
+                                <ComboBoxItem Content="Red"/>
+                                <ComboBoxItem Content="Blue"/>
+                                <ComboBoxItem Content="Green"/>
+                            </ComboBox>
+                        </StackPanel>
+
                         <!-- Actions -->
                         <StackPanel Orientation="Horizontal">
                             <Button Content="↶ Undo (Ctrl+Z)" Click="Undo_Click" Style="{StaticResource GlassButton}">

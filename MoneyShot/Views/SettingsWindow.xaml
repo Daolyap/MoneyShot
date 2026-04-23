@@ -268,6 +268,10 @@
                                         <ToolTip Content="Controls the Windows setting 'Use Print Screen key to open screen capture'"/>
                                     </CheckBox.ToolTip>
                                 </CheckBox>
+                                <CheckBox Name="HideUiFromScreenshotsCheckbox"
+                                          Content="Money Shot UI Invisibility Cloak (Tip: hide UI from screenshots)"
+                                          Foreground="White"
+                                          Margin="0,5"/>
                             </StackPanel>
                         </Border>
 

@@ -49,6 +49,7 @@ public partial class SettingsWindow : Window
         RunOnStartupCheckbox.IsChecked = _settings.RunOnStartup;
         MinimizeToTrayCheckbox.IsChecked = _settings.MinimizeToTray;
         CheckForUpdatesCheckbox.IsChecked = _settings.CheckForUpdatesOnStartup;
+        HideUiFromScreenshotsCheckbox.IsChecked = _settings.HideUiFromScreenshots;
         if (_settingsService.TryGetWindowsPrintScreenDisabled(out var isPrintScreenDisabled))
         {
             _settings.DisableWindowsPrintScreen = isPrintScreenDisabled;
@@ -116,6 +117,7 @@ public partial class SettingsWindow : Window
             _settings.RunOnStartup = RunOnStartupCheckbox.IsChecked ?? false;
             _settings.MinimizeToTray = MinimizeToTrayCheckbox.IsChecked ?? false;
             _settings.CheckForUpdatesOnStartup = CheckForUpdatesCheckbox.IsChecked ?? true;
+            _settings.HideUiFromScreenshots = HideUiFromScreenshotsCheckbox.IsChecked ?? true;
             _settings.DisableWindowsPrintScreen = DisableWindowsPrintScreenCheckbox.IsChecked ?? false;
             _settings.DefaultSavePath = SavePathTextBox.Text;
 

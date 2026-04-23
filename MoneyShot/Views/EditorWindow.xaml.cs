@@ -14,6 +14,7 @@ public partial class EditorWindow : Window
     private BitmapSource _originalImage;
     private AnnotationTool _currentTool = AnnotationTool.None;
     private Color _currentColor = Colors.Red;
+    private Color _currentTextBackgroundColor = Colors.Transparent;
     private int _lineThickness = 3;
     private Point _startPoint;
     private Shape? _currentShape;
@@ -46,6 +47,7 @@ public partial class EditorWindow : Window
     private double _originalLeft;
     private double _originalTop;
     private double _originalTextFontSize;
+    private ElementState? _resizeStartState;
     private List<Rectangle> _resizeHandles = new();
     
     private enum ElementResizeMode
@@ -110,6 +112,16 @@ public partial class EditorWindow : Window
             window.ClearSelection();
         }
     }
+
+    private sealed class ResizeUndoAction(UIElement element, ElementState previousState) : IUndoAction
+    {
+        public void Undo(EditorWindow window)
+        {
+            window.ApplyElementState(element, previousState);
+        }
+    }
+
+    private sealed record ElementState(double Left, double Top, double Width, double Height, double? FontSize);
     
     private const int FreehandMinDistance = 2; // Minimum pixel distance between points
     private const double ShapeUpdateMinDistancePixels = 1.5; // Minimum drag distance in pixels before updating shape geometry
@@ -290,12 +302,93 @@ public partial class EditorWindow : Window
         // Tool buttons will be set up in XAML
     }
 
+    private Point ClampToCanvasBounds(Point point)
+    {
+        var clampedX = Math.Max(0, Math.Min(point.X, DrawingCanvas.Width));
+        var clampedY = Math.Max(0, Math.Min(point.Y, DrawingCanvas.Height));
+        return new Point(clampedX, clampedY);
+    }
+
+    private static bool AreElementStatesEqual(ElementState first, ElementState second)
+    {
+        const double epsilon = 0.01;
+        var fontSizeEqual = (!first.FontSize.HasValue && !second.FontSize.HasValue) ||
+                            (first.FontSize.HasValue && second.FontSize.HasValue &&
+                             Math.Abs(first.FontSize.Value - second.FontSize.Value) < epsilon);
+
+        return Math.Abs(first.Left - second.Left) < epsilon &&
+               Math.Abs(first.Top - second.Top) < epsilon &&
+               Math.Abs(first.Width - second.Width) < epsilon &&
+               Math.Abs(first.Height - second.Height) < epsilon &&
+               fontSizeEqual;
+    }
+
+    private static ElementState? CaptureElementState(UIElement element)
+    {
+        if (element is Shape shape && element is not Line)
+        {
+            var left = Canvas.GetLeft(shape);
+            var top = Canvas.GetTop(shape);
+            if (double.IsNaN(left)) left = 0;
+            if (double.IsNaN(top)) top = 0;
+            return new ElementState(left, top, shape.Width, shape.Height, null);
+        }
+
+        if (element is TextBlock textBlock)
+        {
+            textBlock.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            var left = Canvas.GetLeft(textBlock);
+            var top = Canvas.GetTop(textBlock);
+            if (double.IsNaN(left)) left = 0;
+            if (double.IsNaN(top)) top = 0;
+            var width = textBlock.ActualWidth > 0 ? textBlock.ActualWidth : textBlock.DesiredSize.Width;
+            var height = textBlock.ActualHeight > 0 ? textBlock.ActualHeight : textBlock.DesiredSize.Height;
+            return new ElementState(left, top, width, height, textBlock.FontSize);
+        }
+
+        return null;
+    }
+
+    private void ApplyElementState(UIElement element, ElementState state)
+    {
+        if (element is Shape shape && element is not Line)
+        {
+            shape.Width = state.Width;
+            shape.Height = state.Height;
+            Canvas.SetLeft(shape, state.Left);
+            Canvas.SetTop(shape, state.Top);
+        }
+        else if (element is TextBlock textBlock)
+        {
+            if (state.FontSize.HasValue)
+            {
+                textBlock.FontSize = state.FontSize.Value;
+            }
+            Canvas.SetLeft(textBlock, state.Left);
+            Canvas.SetTop(textBlock, state.Top);
+            textBlock.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        }
+        else
+        {
+            return;
+        }
+
+        if (_selectedElement == element && _selectionBorder != null)
+        {
+            Canvas.SetLeft(_selectionBorder, state.Left - 2);
+            Canvas.SetTop(_selectionBorder, state.Top - 2);
+            _selectionBorder.Width = state.Width + 4;
+            _selectionBorder.Height = state.Height + 4;
+            UpdateResizeHandles(state.Left, state.Top, state.Width, state.Height);
+        }
+    }
+
     private void Canvas_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (e.LeftButton != MouseButtonState.Pressed)
             return;
 
-        var clickPoint = e.GetPosition(DrawingCanvas);
+        var clickPoint = ClampToCanvasBounds(e.GetPosition(DrawingCanvas));
 
         // Handle cursor mode for selection and moving
         if (_currentTool == AnnotationTool.Cursor)
@@ -307,6 +400,8 @@ public partial class EditorWindow : Window
                 _isResizing = true;
                 _resizeMode = resizeHandle;
                 _resizeStartPoint = clickPoint;
+                _resizeStartState = CaptureElementState(_selectedElement);
+                DrawingCanvas.CaptureMouse();
                 
                 // Store original dimensions
                 if (_selectedElement is Shape shape && !(_selectedElement is Line))
@@ -340,6 +435,7 @@ public partial class EditorWindow : Window
                 SelectElement(hitElement);
                 _isDragging = true;
                 _dragStartPoint = clickPoint;
+                DrawingCanvas.CaptureMouse();
             }
             else
             {
@@ -369,6 +465,7 @@ public partial class EditorWindow : Window
             };
             
             DrawingCanvas.Children.Add(_cropRectangle);
+            DrawingCanvas.CaptureMouse();
             return;
         }
 
@@ -378,6 +475,7 @@ public partial class EditorWindow : Window
         _isDrawing = true;
         _startPoint = clickPoint;
         _lastDrawPoint = clickPoint;
+        DrawingCanvas.CaptureMouse();
 
         UIElement? element = _currentTool switch
         {
@@ -408,7 +506,7 @@ public partial class EditorWindow : Window
 
     private void Canvas_MouseMove(object sender, MouseEventArgs e)
     {
-        var currentPoint = e.GetPosition(DrawingCanvas);
+        var currentPoint = ClampToCanvasBounds(e.GetPosition(DrawingCanvas));
 
         // Handle resizing
         if (_currentTool == AnnotationTool.Cursor && _isResizing && _selectedElement != null)
@@ -481,11 +579,26 @@ public partial class EditorWindow : Window
 
     private void Canvas_MouseUp(object sender, MouseButtonEventArgs e)
     {
+        if (DrawingCanvas.IsMouseCaptured)
+        {
+            DrawingCanvas.ReleaseMouseCapture();
+        }
+
         if (_currentTool == AnnotationTool.Cursor)
         {
+            if (_isResizing && _selectedElement != null && _resizeStartState != null)
+            {
+                var resizeEndState = CaptureElementState(_selectedElement);
+                if (resizeEndState != null && !AreElementStatesEqual(_resizeStartState, resizeEndState))
+                {
+                    _undoStack.Push(new ResizeUndoAction(_selectedElement, _resizeStartState));
+                }
+            }
+
             _isDragging = false;
             _isResizing = false;
             _resizeMode = ElementResizeMode.None;
+            _resizeStartState = null;
             return;
         }
 
@@ -694,7 +807,7 @@ public partial class EditorWindow : Window
                 FontSize = 16,
                 FontWeight = FontWeights.Normal,
                 Foreground = new SolidColorBrush(_currentColor),
-                Background = new SolidColorBrush(Color.FromArgb(200, 255, 255, 255)),
+                Background = new SolidColorBrush(_currentTextBackgroundColor),
                 Padding = new Thickness(5)
             };
 
@@ -1401,6 +1514,31 @@ public partial class EditorWindow : Window
             {
                 ChangeElementColor(_selectedElement, _currentColor);
             }
+        }
+    }
+
+    private void TextBackgroundComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (TextBackgroundComboBox.SelectedItem is not ComboBoxItem selectedItem)
+        {
+            return;
+        }
+
+        var colorName = selectedItem.Content?.ToString();
+        _currentTextBackgroundColor = colorName switch
+        {
+            "White" => Colors.White,
+            "Black" => Colors.Black,
+            "Yellow" => Colors.Yellow,
+            "Red" => Colors.Red,
+            "Blue" => Colors.Blue,
+            "Green" => Colors.Green,
+            _ => Colors.Transparent
+        };
+
+        if (_selectedElement is TextBlock selectedText)
+        {
+            selectedText.Background = new SolidColorBrush(_currentTextBackgroundColor);
         }
     }
     

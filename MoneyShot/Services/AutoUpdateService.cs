@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
@@ -38,6 +39,17 @@ public sealed class AutoUpdateService
         if (!_httpClient.DefaultRequestHeaders.UserAgent.Any())
         {
             _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MoneyShot", GetLocalVersion().ToString()));
+        }
+
+        if (!_httpClient.DefaultRequestHeaders.Accept.Any())
+        {
+            _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        }
+
+        var token = Environment.GetEnvironmentVariable("MONEYSHOT_GITHUB_TOKEN");
+        if (!string.IsNullOrWhiteSpace(token) && _httpClient.DefaultRequestHeaders.Authorization == null)
+        {
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Trim());
         }
     }
 
@@ -88,7 +100,14 @@ public sealed class AutoUpdateService
         }
         catch (HttpRequestException ex)
         {
-            throw new InvalidOperationException("Failed to contact GitHub Releases endpoint.", ex);
+            var message = ex.StatusCode switch
+            {
+                HttpStatusCode.Forbidden => "GitHub Releases endpoint rejected the request (403). This is often due to API rate limits or network policy restrictions.",
+                HttpStatusCode.Unauthorized => "GitHub Releases endpoint rejected the request (401). If you use a token, verify MONEYSHOT_GITHUB_TOKEN.",
+                HttpStatusCode.NotFound => "GitHub Releases endpoint returned 404. Please verify the repository release configuration.",
+                _ => "Failed to contact GitHub Releases endpoint."
+            };
+            throw new InvalidOperationException(message, ex);
         }
     }
 
