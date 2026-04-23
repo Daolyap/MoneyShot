@@ -114,6 +114,9 @@ public partial class EditorWindow : Window
     
     private const int FreehandMinDistance = 2; // Minimum pixel distance between points
     private const double ShapeUpdateMinDistancePixels = 1.5; // Minimum drag distance in pixels before updating shape geometry
+    private const double MinResizeDimension = 10;
+    private const double MinTextScaleFactor = 0.5;
+    private const double MinTextFontSize = 8;
     
     // Crop fields
     private Rectangle? _cropRectangle;
@@ -1193,38 +1196,38 @@ public partial class EditorWindow : Window
         switch (_resizeMode)
         {
             case ElementResizeMode.BottomRight:
-                newWidth = Math.Max(10, _originalWidth + deltaX);
-                newHeight = Math.Max(10, _originalHeight + deltaY);
+                newWidth = Math.Max(MinResizeDimension, _originalWidth + deltaX);
+                newHeight = Math.Max(MinResizeDimension, _originalHeight + deltaY);
                 break;
             case ElementResizeMode.BottomLeft:
-                newWidth = Math.Max(10, _originalWidth - deltaX);
-                newHeight = Math.Max(10, _originalHeight + deltaY);
-                newLeft = _originalLeft + (_originalWidth - newWidth);
+                newWidth = Math.Max(MinResizeDimension, _originalWidth - deltaX);
+                newHeight = Math.Max(MinResizeDimension, _originalHeight + deltaY);
+                newLeft = _originalLeft + deltaX;
                 break;
             case ElementResizeMode.TopRight:
-                newWidth = Math.Max(10, _originalWidth + deltaX);
-                newHeight = Math.Max(10, _originalHeight - deltaY);
-                newTop = _originalTop + (_originalHeight - newHeight);
+                newWidth = Math.Max(MinResizeDimension, _originalWidth + deltaX);
+                newHeight = Math.Max(MinResizeDimension, _originalHeight - deltaY);
+                newTop = _originalTop + deltaY;
                 break;
             case ElementResizeMode.TopLeft:
-                newWidth = Math.Max(10, _originalWidth - deltaX);
-                newHeight = Math.Max(10, _originalHeight - deltaY);
-                newLeft = _originalLeft + (_originalWidth - newWidth);
-                newTop = _originalTop + (_originalHeight - newHeight);
+                newWidth = Math.Max(MinResizeDimension, _originalWidth - deltaX);
+                newHeight = Math.Max(MinResizeDimension, _originalHeight - deltaY);
+                newLeft = _originalLeft + deltaX;
+                newTop = _originalTop + deltaY;
                 break;
             case ElementResizeMode.Right:
-                newWidth = Math.Max(10, _originalWidth + deltaX);
+                newWidth = Math.Max(MinResizeDimension, _originalWidth + deltaX);
                 break;
             case ElementResizeMode.Left:
-                newWidth = Math.Max(10, _originalWidth - deltaX);
-                newLeft = _originalLeft + (_originalWidth - newWidth);
+                newWidth = Math.Max(MinResizeDimension, _originalWidth - deltaX);
+                newLeft = _originalLeft + deltaX;
                 break;
             case ElementResizeMode.Bottom:
-                newHeight = Math.Max(10, _originalHeight + deltaY);
+                newHeight = Math.Max(MinResizeDimension, _originalHeight + deltaY);
                 break;
             case ElementResizeMode.Top:
-                newHeight = Math.Max(10, _originalHeight - deltaY);
-                newTop = _originalTop + (_originalHeight - newHeight);
+                newHeight = Math.Max(MinResizeDimension, _originalHeight - deltaY);
+                newTop = _originalTop + deltaY;
                 break;
         }
 
@@ -1245,8 +1248,8 @@ public partial class EditorWindow : Window
                 ElementResizeMode.Top or ElementResizeMode.Bottom => heightScale,
                 _ => Math.Min(widthScale, heightScale)
             };
-            scale = Math.Max(0.5, scale);
-            textBlock.FontSize = Math.Max(8, _originalTextFontSize * scale);
+            scale = Math.Max(MinTextScaleFactor, scale);
+            textBlock.FontSize = Math.Max(MinTextFontSize, _originalTextFontSize * scale);
             textBlock.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             Canvas.SetLeft(textBlock, newLeft);
             Canvas.SetTop(textBlock, newTop);
