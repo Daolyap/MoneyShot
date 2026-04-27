@@ -1162,8 +1162,8 @@ public partial class EditorWindow : Window
         
         DrawingCanvas.Children.Add(_selectionBorder);
         
-        // Add resize handles for resizable elements
-        if ((element is Shape shape2 && !(element is Line)) || element is TextBlock)
+        // Add resize handles for resizable elements (not arrows/paths whose size comes from geometry)
+        if ((element is Shape shape2 && !(element is Line) && !(element is Path)) || element is TextBlock)
         {
             CreateResizeHandles(left, top, width, height);
         }
@@ -1343,7 +1343,7 @@ public partial class EditorWindow : Window
                 break;
         }
 
-        if (element is Shape shape && element is not Line)
+        if (element is Shape shape && element is not Line && element is not Path)
         {
             shape.Width = newWidth;
             shape.Height = newHeight;
