@@ -388,18 +388,25 @@ public partial class EditorWindow : Window
         if (e.LeftButton != MouseButtonState.Pressed)
             return;
 
-        var clickPoint = ClampToCanvasBounds(e.GetPosition(DrawingCanvas));
+        // Cursor-mode operations (drag/resize) use the raw position so that
+        // clamping does not corrupt _resizeStartPoint / _dragStartPoint and
+        // cause snap jumps when the cursor re-enters the canvas.
+        // Drawing tools use the clamped position to stay within the image bounds.
+        var rawPoint = e.GetPosition(DrawingCanvas);
+        var clickPoint = _currentTool == AnnotationTool.Cursor
+            ? rawPoint
+            : ClampToCanvasBounds(rawPoint);
 
         // Handle cursor mode for selection and moving
         if (_currentTool == AnnotationTool.Cursor)
         {
             // Check if clicking on a resize handle first
-            var resizeHandle = FindResizeHandleAtPoint(clickPoint);
+            var resizeHandle = FindResizeHandleAtPoint(rawPoint);
             if (resizeHandle != ElementResizeMode.None && _selectedElement != null)
             {
                 _isResizing = true;
                 _resizeMode = resizeHandle;
-                _resizeStartPoint = clickPoint;
+                _resizeStartPoint = rawPoint;
                 _resizeStartState = CaptureElementState(_selectedElement);
                 DrawingCanvas.CaptureMouse();
                 
@@ -428,13 +435,13 @@ public partial class EditorWindow : Window
             }
             
             // Try to find an element at the click position
-            var hitElement = FindElementAtPoint(clickPoint);
+            var hitElement = FindElementAtPoint(rawPoint);
             
             if (hitElement != null)
             {
                 SelectElement(hitElement);
                 _isDragging = true;
-                _dragStartPoint = clickPoint;
+                _dragStartPoint = rawPoint;
                 DrawingCanvas.CaptureMouse();
             }
             else
@@ -506,23 +513,27 @@ public partial class EditorWindow : Window
 
     private void Canvas_MouseMove(object sender, MouseEventArgs e)
     {
-        var currentPoint = ClampToCanvasBounds(e.GetPosition(DrawingCanvas));
+        // Raw position for cursor-mode (drag/resize) to avoid ClampToCanvasBounds
+        // freezing _dragStartPoint at the canvas edge and causing jump-snaps when
+        // the cursor re-enters from a different position.
+        var rawPoint = e.GetPosition(DrawingCanvas);
+        var currentPoint = ClampToCanvasBounds(rawPoint);
 
-        // Handle resizing
+        // Handle resizing – use raw (unclamped) position
         if (_currentTool == AnnotationTool.Cursor && _isResizing && _selectedElement != null)
         {
-            ResizeElement(_selectedElement, currentPoint);
+            ResizeElement(_selectedElement, rawPoint);
             return;
         }
 
-        // Handle cursor mode for dragging elements
+        // Handle cursor mode for dragging elements – use raw (unclamped) position
         if (_currentTool == AnnotationTool.Cursor && _isDragging && _selectedElement != null)
         {
-            var deltaX = currentPoint.X - _dragStartPoint.X;
-            var deltaY = currentPoint.Y - _dragStartPoint.Y;
+            var deltaX = rawPoint.X - _dragStartPoint.X;
+            var deltaY = rawPoint.Y - _dragStartPoint.Y;
             
             MoveElement(_selectedElement, deltaX, deltaY);
-            _dragStartPoint = currentPoint;
+            _dragStartPoint = rawPoint;
             return;
         }
 
