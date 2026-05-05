@@ -12,6 +12,7 @@ public class AppSettings
     public bool MinimizeToTray { get; set; } = true;
     public bool StartInTray { get; set; } = true;
     public bool DisableWindowsPrintScreen { get; set; } = false;
+    public bool HideUiFromScreenshots { get; set; } = true;
     public bool CheckForUpdatesOnStartup { get; set; } = true;
     public Color DefaultAnnotationColor { get; set; } = Colors.Red;
     public int DefaultLineThickness { get; set; } = 3;

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
@@ -17,6 +18,7 @@ public sealed class AutoUpdateService
     private const string Owner = "Daolyap";
     private const string Repository = "MoneyShot";
     private const string LatestReleaseUrl = $"https://api.github.com/repos/{Owner}/{Repository}/releases/latest";
+    private const string AllReleasesUrl = $"https://api.github.com/repos/{Owner}/{Repository}/releases?per_page=1";
     private static readonly Regex VersionNumberRegex = new(@"\d+", RegexOptions.Compiled);
 
     private readonly HttpClient _httpClient;
@@ -38,6 +40,17 @@ public sealed class AutoUpdateService
         if (!_httpClient.DefaultRequestHeaders.UserAgent.Any())
         {
             _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MoneyShot", GetLocalVersion().ToString()));
+        }
+
+        if (!_httpClient.DefaultRequestHeaders.Accept.Any())
+        {
+            _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        }
+
+        var token = Environment.GetEnvironmentVariable(""); // I can put a GitHub token in here if I want authenticated API requests
+        if (!string.IsNullOrWhiteSpace(token) && _httpClient.DefaultRequestHeaders.Authorization == null)
+        {
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Trim());
         }
     }
 
@@ -65,7 +78,8 @@ public sealed class AutoUpdateService
             var remoteVersion = ParseVersion(release.TagName);
             if (remoteVersion == null)
             {
-                return null;
+                throw new InvalidOperationException(
+                    $"Could not parse version from release tag '{release.TagName}'. Expected format: v1.2.3 or v1.2.3-build.N");
             }
 
             var localVersion = GetLocalVersion();
@@ -77,7 +91,9 @@ public sealed class AutoUpdateService
             var preferredAsset = SelectPreferredAsset(release.Assets);
             if (preferredAsset == null)
             {
-                return null;
+                throw new InvalidOperationException(
+                    $"Release {release.TagName} has no supported asset (.exe or .zip). " +
+                    "MSI-only releases cannot be applied automatically.");
             }
 
             return new UpdateInfo(localVersion, remoteVersion, preferredAsset.Name, preferredAsset.BrowserDownloadUrl);
@@ -88,7 +104,36 @@ public sealed class AutoUpdateService
         }
         catch (HttpRequestException ex)
         {
-            throw new InvalidOperationException("Failed to contact GitHub Releases endpoint.", ex);
+            var message = ex.StatusCode switch
+            {
+                HttpStatusCode.Forbidden => "GitHub Releases endpoint rejected the request (403). This is often due to API rate limits or network policy restrictions.",
+                HttpStatusCode.Unauthorized => "GitHub Releases endpoint rejected the request (401). Public releases normally do not require authentication; if you configured MONEYSHOT_GITHUB_TOKEN, verify it is valid.",
+                HttpStatusCode.NotFound => await HasOnlyPreReleasesAsync(cancellationToken)
+                    ? "No stable releases are available. Daolyap should resolve this issue soon (unless he's dead)."
+                    : "GitHub Releases endpoint returned 404. Please verify the repository release configuration.",
+                _ => "Failed to contact GitHub Releases endpoint."
+            };
+            throw new InvalidOperationException(message, ex);
+        }
+    }
+
+    private async Task<bool> HasOnlyPreReleasesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await _httpClient.GetAsync(AllReleasesUrl, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return false;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var releases = await JsonSerializer.DeserializeAsync<List<GitHubReleaseResponse>>(stream, cancellationToken: cancellationToken);
+            return releases?.Count > 0;
+        }
+        catch
+        {
+            return false;
         }
     }
 

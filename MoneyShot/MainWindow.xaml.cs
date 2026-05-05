@@ -68,9 +68,29 @@ public partial class MainWindow : Window
     {
         try
         {
+            await CheckForUpdatesAsync(showUpToDateMessage: false, showErrorsToUser: false);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Auto-update check failed: {ex.Message}");
+        }
+    }
+
+    private async Task CheckForUpdatesAsync(bool showUpToDateMessage, bool showErrorsToUser)
+    {
+        try
+        {
             var updateInfo = await _autoUpdateService.GetAvailableUpdateAsync();
             if (updateInfo == null)
             {
+                if (showUpToDateMessage)
+                {
+                    System.Windows.MessageBox.Show(
+                        "You already have the latest version of Money Shot.",
+                        "No Updates Available",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
                 return;
             }
 
@@ -92,7 +112,21 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Auto-update check failed: {ex.Message}");
+            if (showErrorsToUser)
+            {
+                var guidance = ex.Message.Contains("GitHub Releases endpoint", StringComparison.OrdinalIgnoreCase)
+                    ? "\n\nNo Money Shot configuration is required. Please ensure this device can access https://api.github.com (network/firewall/proxy) and try again."
+                    : string.Empty;
+                System.Windows.MessageBox.Show(
+                    $"Failed to check for updates: {ex.Message}{guidance}",
+                    "Update Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"Auto-update check failed: {ex.Message}");
+            }
         }
     }
 
@@ -232,6 +266,7 @@ public partial class MainWindow : Window
         }
         
         contextMenu.Items.Add("-");
+        contextMenu.Items.Add("Check for Updates", null, async (s, e) => await CheckForUpdatesAsync(showUpToDateMessage: true, showErrorsToUser: true));
         contextMenu.Items.Add("Settings", null, (s, e) => ShowSettings());
         contextMenu.Items.Add("-");
         contextMenu.Items.Add("Show Window", null, (s, e) => ShowMainWindow());
@@ -264,11 +299,22 @@ public partial class MainWindow : Window
     {
         try
         {
-            // Capture the screen BEFORE hiding the window to get a frozen snapshot
-            var frozenScreen = _screenshotService.CaptureFullScreen();
+            var settings = _settingsService.LoadSettings();
+            if (settings.HideUiFromScreenshots)
+            {
+                Hide();
+                System.Windows.Application.Current.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Render);
+                System.Threading.Thread.Sleep(300);
+            }
             
-            Hide();
-            System.Threading.Thread.Sleep(200);
+            // Capture frozen snapshot after hide when invisibility cloak is enabled.
+            var frozenScreen = _screenshotService.CaptureFullScreen();
+
+            if (!settings.HideUiFromScreenshots)
+            {
+                Hide();
+                System.Threading.Thread.Sleep(200);
+            }
 
             var regionSelector = new RegionSelector(frozenScreen);
             if (regionSelector.ShowDialog() == true && regionSelector.CroppedScreenshot != null)
@@ -372,9 +418,9 @@ public partial class MainWindow : Window
         var monitorHotkeys = screens.Count > 1 ? $"\n• Ctrl+Shift+1-{Math.Min(screens.Count, MaxMonitorHotkeys)} - Capture individual monitors" : "";
         
         System.Windows.MessageBox.Show(
-            "Money Shot - Modern Screenshot Tool\n\n" +
+            "Money Shot - Incredible AI Slop\n\n" +
             "Version 2.0.0\n\n" +
-            "A comprehensive screenshot tool for Windows 11+ with annotation capabilities.\n\n" +
+            "Developed by Daolyap & iSaluki\n\n" +
             "Features:\n" +
             "• Full screen, region, and individual monitor capture\n" +
             "• Multi-monitor support\n" +
@@ -382,14 +428,23 @@ public partial class MainWindow : Window
             "• Customizable hotkeys\n" +
             "• Save to file or clipboard\n" +
             "• System tray integration\n" +
-            "• Start in tray option\n\n" +
+            "• Start in tray option\n" +
+            "• Disable default print screen behaviour\n\n" +
             "Current Hotkeys:\n" +
             $"• {settings.HotKeyCapture} - Capture full screen\n" +
             $"• {settings.HotKeyRegionCapture} - Capture region" +
-            monitorHotkeys,
+            monitorHotkeys +
+            "\n\nContact:\n" +
+            "Features - https://github.com/daolyap/moneyshot/issues\n" +
+            "Security - moneyshot@daolyap.dev",
             "About Money Shot",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
+    }
+
+    private async void CheckForUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        await CheckForUpdatesAsync(showUpToDateMessage: true, showErrorsToUser: true);
     }
 
     private void Window_StateChanged(object sender, EventArgs e)
