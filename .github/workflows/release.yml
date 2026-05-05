@@ -5,6 +5,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-and-release:
     runs-on: windows-latest
@@ -87,6 +90,19 @@ jobs:
           Installer/Product.wxs
         echo "MSI_NAME=$msiName" >> $env:GITHUB_ENV
 
+    - name: Generate SHA256SUMS.txt
+      shell: pwsh
+      run: |
+        # Format: "<lowercase-hex-hash>  <filename>" — matches GNU sha256sum output that the
+        # in-app AutoUpdateService.ParseSha256Sums function knows how to read.
+        $files = @($env:ZIP_NAME, $env:MSI_NAME) | Where-Object { Test-Path $_ }
+        $lines = foreach ($file in $files) {
+          $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+          "$hash  $(Split-Path $file -Leaf)"
+        }
+        $lines -join "`n" | Set-Content -Path SHA256SUMS.txt -NoNewline -Encoding ASCII
+        Get-Content SHA256SUMS.txt
+
     - name: Create GitHub Release
       uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
       with:
@@ -131,6 +147,7 @@ jobs:
         files: |
           ${{ env.ZIP_NAME }}
           ${{ env.MSI_NAME }}
+          SHA256SUMS.txt
         draft: false
         prerelease: false
       env:

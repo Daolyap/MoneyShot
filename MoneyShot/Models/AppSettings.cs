@@ -18,4 +18,6 @@ public class AppSettings
     public int DefaultLineThickness { get; set; } = 3;
     public string HotKeyCapture { get; set; } = "PrintScreen";
     public string HotKeyRegionCapture { get; set; } = "Ctrl+PrintScreen";
+    public bool SaveCapturesToHistory { get; set; } = true;
+    public int HistoryRetentionCount { get; set; } = 50;
 }

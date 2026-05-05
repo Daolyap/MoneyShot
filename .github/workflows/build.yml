@@ -47,10 +47,20 @@ jobs:
         }
 
     - name: Restore dependencies
-      run: dotnet restore MoneyShot/MoneyShot.csproj
+      run: dotnet restore MoneyShot.sln
 
     - name: Build
-      run: dotnet build MoneyShot/MoneyShot.csproj --configuration Release --no-restore /p:AssemblyVersion=${{ steps.get_version.outputs.version }}.${{ steps.get_version.outputs.build_number }} /p:FileVersion=${{ steps.get_version.outputs.version }}.${{ steps.get_version.outputs.build_number }}
+      run: dotnet build MoneyShot.sln --configuration Release --no-restore /p:AssemblyVersion=${{ steps.get_version.outputs.version }}.${{ steps.get_version.outputs.build_number }} /p:FileVersion=${{ steps.get_version.outputs.version }}.${{ steps.get_version.outputs.build_number }}
+
+    - name: Run tests
+      run: dotnet test MoneyShot.Tests/MoneyShot.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: test-results
+        path: MoneyShot.Tests/TestResults/
 
     - name: Publish (self-contained single-file)
       run: dotnet publish MoneyShot/MoneyShot.csproj --configuration Release --output ./publish --runtime win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true

@@ -15,7 +15,7 @@ public class SaveService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error saving to clipboard: {ex.Message}");
+            Logger.Error("Error saving to clipboard", ex);
             throw new InvalidOperationException("Failed to save image to clipboard.", ex);
         }
     }
@@ -50,12 +50,12 @@ public class SaveService
         }
         catch (UnauthorizedAccessException ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Access denied when saving file: {ex.Message}");
+            Logger.Error("Access denied when saving file", ex);
             throw new InvalidOperationException("Access denied. Check file permissions.", ex);
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error saving file: {ex.Message}");
+            Logger.Error("Error saving file", ex);
             throw new InvalidOperationException($"Failed to save image to file: {ex.Message}", ex);
         }
     }

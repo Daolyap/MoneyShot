@@ -78,7 +78,7 @@ public partial class RegionSelector : Window
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error displaying frozen screen: {ex.Message}");
+            MoneyShot.Services.Logger.Error("Error displaying frozen screen", ex);
             // Fallback to just the overlay without frozen background
             Background = new SolidColorBrush(Color.FromArgb(100, 0, 0, 0));
         }
@@ -167,7 +167,7 @@ public partial class RegionSelector : Window
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Error cropping frozen screenshot: {ex.Message}");
+                    MoneyShot.Services.Logger.Error("Error cropping frozen screenshot", ex);
                     DialogResult = false;
                 }
             }

@@ -1,21 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
-  
+
   <?ifndef ProductVersion ?>
     <?define ProductVersion = "1.0.0.0" ?>
   <?endif ?>
-  
+
   <Package Name="Money Shot"
            Manufacturer="Daolyap &amp; iSaluki"
            Version="$(var.ProductVersion)"
            UpgradeCode="A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
            Scope="perMachine"
            InstallerVersion="500">
-    
+
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed."
                   Schedule="afterInstallValidate" />
-    
+
+    <!-- Refuse to install on anything older than Windows 10 (build 10.0.0). VersionNT64 also
+         enforces 64-bit Windows, matching the x64 publish output. -->
+    <Launch Condition="Installed OR (VersionNT64 &gt;= 603)"
+            Message="[ProductName] requires 64-bit Windows 10 or later." />
+
     <MediaTemplate EmbedCab="yes" />
 
     <!-- Use WiX UI for a graphical installer experience -->

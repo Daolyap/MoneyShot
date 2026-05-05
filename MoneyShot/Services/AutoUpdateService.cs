@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -83,7 +84,7 @@ public sealed class AutoUpdateService
             }
 
             var localVersion = GetLocalVersion();
-            if (remoteVersion <= localVersion)
+            if (CompareSemVer(remoteVersion, localVersion) <= 0)
             {
                 return null;
             }
@@ -96,7 +97,13 @@ public sealed class AutoUpdateService
                     "MSI-only releases cannot be applied automatically.");
             }
 
-            return new UpdateInfo(localVersion, remoteVersion, preferredAsset.Name, preferredAsset.BrowserDownloadUrl);
+            // Try to find a SHA256SUMS.txt asset and look up our asset's expected hash. If the
+            // release is missing the sums file, we surface a non-fatal warning later in
+            // StageAndPrepareUpdateAsync rather than refusing to update — old releases predate
+            // this scheme and we don't want to brick existing installs.
+            var expectedSha256 = await TryFindExpectedSha256Async(release.Assets, preferredAsset.Name, cancellationToken);
+
+            return new UpdateInfo(localVersion, remoteVersion, preferredAsset.Name, preferredAsset.BrowserDownloadUrl, expectedSha256);
         }
         catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
@@ -154,6 +161,25 @@ public sealed class AutoUpdateService
         try
         {
             await DownloadFileAsync(updateInfo.DownloadUrl, downloadedAssetPath, cancellationToken);
+
+            // Refuse to install a binary whose hash doesn't match the publisher's SHA256SUMS.txt
+            // — a mismatch could indicate a tampered release, an interrupted download, or a
+            // mirror serving an old asset. Releases without a sums file are allowed through with
+            // a logged warning so we don't block updates from older releases.
+            if (!string.IsNullOrEmpty(updateInfo.ExpectedSha256))
+            {
+                var actualSha256 = await ComputeSha256Async(downloadedAssetPath, cancellationToken);
+                if (!string.Equals(actualSha256, updateInfo.ExpectedSha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        $"Update integrity check failed. Expected SHA-256 {updateInfo.ExpectedSha256} but downloaded asset has SHA-256 {actualSha256}. Refusing to install.");
+                }
+            }
+            else
+            {
+                MoneyShot.Services.Logger.Warn($"Release for {updateInfo.AssetName} has no SHA256SUMS.txt — installing without integrity verification.");
+            }
+
             var executableToInstall = PrepareExecutableAsset(downloadedAssetPath, stagedExecutablePath);
 
             var scriptPath = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
@@ -224,7 +250,61 @@ public sealed class AutoUpdateService
         throw new InvalidOperationException("Unsupported update asset type. Expected .exe or .zip.");
     }
 
-    private static ReleaseAsset? SelectPreferredAsset(IReadOnlyList<ReleaseAsset>? assets)
+    private async Task<string?> TryFindExpectedSha256Async(IReadOnlyList<ReleaseAsset>? assets, string assetName, CancellationToken cancellationToken)
+    {
+        if (assets == null) return null;
+        var sumsAsset = assets.FirstOrDefault(a => a.Name.Equals("SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase));
+        if (sumsAsset == null) return null;
+
+        try
+        {
+            using var response = await _httpClient.GetAsync(sumsAsset.BrowserDownloadUrl, cancellationToken);
+            if (!response.IsSuccessStatusCode) return null;
+            var text = await response.Content.ReadAsStringAsync(cancellationToken);
+            return ParseSha256Sums(text, assetName);
+        }
+        catch
+        {
+            // Network or parse failure — fall through to "no expected hash" rather than refuse.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Parses standard `sha256sum`-style output: each line is "&lt;hex hash&gt;  &lt;file name&gt;".
+    /// Returns the hash for the requested filename or null if not present.
+    /// </summary>
+    internal static string? ParseSha256Sums(string sumsContent, string assetName)
+    {
+        if (string.IsNullOrWhiteSpace(sumsContent)) return null;
+        foreach (var rawLine in sumsContent.Split('\n'))
+        {
+            var line = rawLine.Trim();
+            if (line.Length == 0 || line.StartsWith('#')) continue;
+
+            // Split on whitespace, allowing for either single-space or two-space separators
+            // and an optional binary-mode `*` prefix in front of the filename.
+            var parts = line.Split(new[] { ' ', '\t' }, 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 2) continue;
+            var hash = parts[0].Trim();
+            var name = parts[1].TrimStart('*').Trim();
+            if (name.Equals(assetName, StringComparison.OrdinalIgnoreCase) && hash.Length == 64)
+            {
+                return hash;
+            }
+        }
+        return null;
+    }
+
+    private static async Task<string> ComputeSha256Async(string filePath, CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var sha = SHA256.Create();
+        var hash = await sha.ComputeHashAsync(stream, cancellationToken);
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    internal static ReleaseAsset? SelectPreferredAsset(IReadOnlyList<ReleaseAsset>? assets)
     {
         if (assets == null || assets.Count == 0)
         {
@@ -235,7 +315,22 @@ public sealed class AutoUpdateService
             ?? assets.FirstOrDefault(asset => asset.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static Version? ParseVersion(string? value)
+    internal static int CompareSemVer(Version a, Version b)
+    {
+        var aMajor = a.Major;
+        var bMajor = b.Major;
+        if (aMajor != bMajor) return aMajor.CompareTo(bMajor);
+
+        var aMinor = a.Minor;
+        var bMinor = b.Minor;
+        if (aMinor != bMinor) return aMinor.CompareTo(bMinor);
+
+        var aPatch = a.Build < 0 ? 0 : a.Build;
+        var bPatch = b.Build < 0 ? 0 : b.Build;
+        return aPatch.CompareTo(bPatch);
+    }
+
+    internal static Version? ParseVersion(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -349,7 +444,7 @@ public sealed class AutoUpdateService
         return $"'{value.Replace("'", "'\"'\"'", StringComparison.Ordinal)}'";
     }
 
-    private sealed class GitHubReleaseResponse
+    internal sealed class GitHubReleaseResponse
     {
         [JsonPropertyName("tag_name")]
         public string? TagName { get; set; }
@@ -358,7 +453,7 @@ public sealed class AutoUpdateService
         public List<ReleaseAsset>? Assets { get; set; }
     }
 
-    private sealed class ReleaseAsset
+    internal sealed class ReleaseAsset
     {
         [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
@@ -368,4 +463,4 @@ public sealed class AutoUpdateService
     }
 }
 
-public sealed record UpdateInfo(Version LocalVersion, Version RemoteVersion, string AssetName, string DownloadUrl);
+public sealed record UpdateInfo(Version LocalVersion, Version RemoteVersion, string AssetName, string DownloadUrl, string? ExpectedSha256 = null);

@@ -10,13 +10,15 @@ A modern, feature-rich screenshot tool built for Windows with comprehensive anno
 - **Multi-Monitor Support** - Works seamlessly across multiple displays
 
 ### Annotation Tools
-- **Shapes**: Rectangles, circles, arrows, and lines
-- **Freehand Drawing**: Draw free-form annotations
-- **Colors**: Multiple color options for all tools
+- **Shapes**: Rectangles, circles, arrows, and lines with endpoint resize
+- **Freehand Drawing**: Draw free-form annotations with smooth curves
+- **Colors**: 8 preset colors + custom color picker for unlimited options
+- **Line Thickness**: Adjustable stroke width slider (1-10px)
 - **Text**: Add text annotations with customizable fonts
 - **Numbers**: Sequential numbering for step-by-step guides
 - **Blur Tool**: Pixelate sensitive information
-- **Undo/Redo**: Easily correct mistakes
+- **Undo**: Easily correct mistakes (undo multiple steps)
+- **Keyboard Shortcuts**: Access help overlay with `?` key
 
 ### Save Options
 - **Clipboard**: Copy screenshots directly to clipboard
@@ -30,9 +32,12 @@ A modern, feature-rich screenshot tool built for Windows with comprehensive anno
   - `Ctrl + Print Screen` - Capture region (customizable)
   - `Ctrl + Shift + 1-9` - Capture individual monitors
 - **Customizable Hotkeys**: Configure hotkeys in settings
+- **Capture History**: Local screenshot history with thumbnails, search, and quick access
 - **System Tray Integration**: Runs in background, accessible from tray
 - **Startup Integration**: Optional auto-start with Windows
+- **Auto-Update**: Automatic update checks with SHA-256 integrity verification
 - **Modern UI**: Clean, dark-themed interface optimized for Windows 11
+- **Keyboard Shortcuts**: Built-in shortcut guide accessible via `?` key
 
 ## Installation
 
@@ -122,23 +127,26 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - [x] Full screen capture
 - [x] Region selection
 - [x] Basic annotation tools (rectangles, circles, arrows, lines)
-- [x] Color selection
+- [x] Color selection (8 preset + custom picker)
 - [x] Save to clipboard/file
-- [x] Global hotkeys
+- [x] Global hotkeys (customizable)
 - [x] System tray integration
 - [x] Windows startup integration
-- [x] Modern UI
+- [x] Modern UI with dark theme
 - [x] GitHub Actions build workflow
-- [x] MSI Installer package
+- [x] MSI Installer package with auto-update
 - [x] Advanced text tool with font selection
-- [x] Blur/pixelate tool
-- [x] Freehand drawing
+- [x] Blur/pixelate tool for privacy
+- [x] Freehand drawing with smooth rendering
 - [x] Individual monitor hotkeys (Ctrl+Shift+1-9)
-- [x] Customizable hotkeys
+- [x] Screenshot history with thumbnails
+- [x] Auto-update with SHA-256 verification
+- [x] Keyboard shortcuts help overlay
+- [x] Adjustable stroke thickness
+- [x] Endpoint resize for arrows and lines
 - [ ] Image effects (drop shadow, borders)
-- [ ] Screenshot history
 - [ ] Quick share to cloud services
-- [x] Auto-update functionality
+- [ ] Authenticode code signing
 
 ## License
 

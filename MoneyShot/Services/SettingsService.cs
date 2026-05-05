@@ -41,12 +41,11 @@ public class SettingsService
             };
             
             var settings = JsonSerializer.Deserialize<AppSettings>(json, options);
-            
+
             // Validate and sanitize loaded settings
             if (settings != null)
             {
-                settings = ValidateAndSanitizeSettings(settings);
-                return settings;
+                return ValidateAndSanitizeSettings(settings);
             }
             
             return new AppSettings();
@@ -54,14 +53,14 @@ public class SettingsService
         catch (JsonException ex)
         {
             // Log the error (in a real app, use proper logging)
-            System.Diagnostics.Debug.WriteLine($"Error deserializing settings: {ex.Message}");
+            Logger.Error("Error deserializing settings", ex);
             // Return default settings if deserialization fails
             return new AppSettings();
         }
         catch (Exception ex)
         {
             // Log unexpected errors
-            System.Diagnostics.Debug.WriteLine($"Unexpected error loading settings: {ex.Message}");
+            Logger.Error("Unexpected error loading settings", ex);
             return new AppSettings();
         }
     }
@@ -90,53 +89,55 @@ public class SettingsService
         catch (Exception ex)
         {
             // Log the error
-            System.Diagnostics.Debug.WriteLine($"Error saving settings: {ex.Message}");
+            Logger.Error("Error saving settings", ex);
             throw new InvalidOperationException("Failed to save settings. Please check file permissions.", ex);
         }
     }
     
+    private static readonly char[] WindowsForbiddenPathChars = { '<', '>', '|', '?', '*', '"' };
+
     /// <summary>
     /// Validates and sanitizes settings to prevent path traversal and other security issues
     /// </summary>
-    private AppSettings ValidateAndSanitizeSettings(AppSettings settings)
+    internal static AppSettings ValidateAndSanitizeSettings(AppSettings settings)
     {
+        var fallbackSavePath = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
         // Validate and sanitize save path to prevent path traversal
-        if (!string.IsNullOrEmpty(settings.DefaultSavePath))
+        if (!string.IsNullOrEmpty(settings.DefaultSavePath)
+            && settings.DefaultSavePath.IndexOfAny(WindowsForbiddenPathChars) < 0
+            && !ContainsControlChar(settings.DefaultSavePath))
         {
             try
             {
                 // Get the full path and ensure it's a valid, absolute path
                 var fullPath = Path.GetFullPath(settings.DefaultSavePath);
-                
+
                 // Ensure the path is rooted (absolute) and doesn't use relative components
-                if (!Path.IsPathRooted(fullPath))
+                if (Path.IsPathRooted(fullPath) && Path.IsPathFullyQualified(settings.DefaultSavePath))
                 {
-                    settings.DefaultSavePath = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+                    settings.DefaultSavePath = fullPath;
                 }
                 else
                 {
-                    settings.DefaultSavePath = fullPath;
+                    settings.DefaultSavePath = fallbackSavePath;
                 }
             }
             catch (ArgumentException)
             {
-                // Path contains invalid characters
-                settings.DefaultSavePath = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+                settings.DefaultSavePath = fallbackSavePath;
             }
             catch (NotSupportedException)
             {
-                // Path format not supported
-                settings.DefaultSavePath = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+                settings.DefaultSavePath = fallbackSavePath;
             }
             catch (PathTooLongException)
             {
-                // Path exceeds maximum length
-                settings.DefaultSavePath = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+                settings.DefaultSavePath = fallbackSavePath;
             }
         }
         else
         {
-            settings.DefaultSavePath = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+            settings.DefaultSavePath = fallbackSavePath;
         }
         
         // Validate file format
@@ -153,6 +154,15 @@ public class SettingsService
         }
         
         return settings;
+    }
+
+    private static bool ContainsControlChar(string value)
+    {
+        foreach (var c in value)
+        {
+            if (char.IsControl(c)) return true;
+        }
+        return false;
     }
 
     public void SetStartupWithWindows(bool enabled)
@@ -189,12 +199,12 @@ public class SettingsService
         }
         catch (UnauthorizedAccessException ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Registry access denied: {ex.Message}");
+            Logger.Error("Registry access denied", ex);
             throw new InvalidOperationException("Insufficient permissions to modify startup settings. Please run as administrator.", ex);
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error setting startup configuration: {ex.Message}");
+            Logger.Error("Error setting startup configuration", ex);
             throw new InvalidOperationException("Failed to modify startup settings.", ex);
         }
     }
@@ -211,7 +221,7 @@ public class SettingsService
         catch (Exception ex)
         {
             // Log but don't throw - this is a read-only operation
-            System.Diagnostics.Debug.WriteLine($"Error checking startup status: {ex.Message}");
+            Logger.Error("Error checking startup status", ex);
             return false;
         }
     }
@@ -225,7 +235,7 @@ public class SettingsService
                 ?? Registry.CurrentUser.CreateSubKey(@"Control Panel\Keyboard", true);
             if (key == null)
             {
-                System.Diagnostics.Debug.WriteLine("Unable to access keyboard settings in registry.");
+                Logger.Warn("Unable to access keyboard settings in registry.");
                 return false;
             }
 
@@ -238,12 +248,12 @@ public class SettingsService
         }
         catch (UnauthorizedAccessException ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Registry access denied: {ex.Message}");
+            Logger.Error("Registry access denied", ex);
             return false;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error setting Print Screen configuration: {ex.Message}");
+            Logger.Error("Error setting Print Screen configuration", ex);
             return false;
         }
     }
@@ -277,7 +287,7 @@ public class SettingsService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error reading Print Screen configuration: {ex.Message}");
+            Logger.Error("Error reading Print Screen configuration", ex);
             return false;
         }
     }

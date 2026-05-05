@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     private readonly SettingsService _settingsService;
     private readonly HotKeyService _hotKeyService;
     private readonly AutoUpdateService _autoUpdateService;
+    private readonly HistoryService _historyService;
     private NotifyIcon? _notifyIcon;
     
     // Maximum number of monitors that can have individual hotkeys (limited by number keys 1-9)
@@ -33,6 +34,7 @@ public partial class MainWindow : Window
         _settingsService = new SettingsService();
         _hotKeyService = new HotKeyService();
         _autoUpdateService = new AutoUpdateService();
+        _historyService = new HistoryService();
 
         SetupSystemTray();
         Loaded += MainWindow_Loaded;
@@ -60,7 +62,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Main window startup failed: {ex.Message}");
+            MoneyShot.Services.Logger.Error("Main window startup failed", ex);
         }
     }
 
@@ -72,7 +74,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Auto-update check failed: {ex.Message}");
+            MoneyShot.Services.Logger.Error("Auto-update check failed", ex);
         }
     }
 
@@ -125,7 +127,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine($"Auto-update check failed: {ex.Message}");
+                MoneyShot.Services.Logger.Error("Auto-update check failed", ex);
             }
         }
     }
@@ -237,7 +239,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             // Log the error and use default icon
-            System.Diagnostics.Debug.WriteLine($"Error setting up system tray icon: {ex.Message}");
+            MoneyShot.Services.Logger.Error("Error setting up system tray icon", ex);
             
             _notifyIcon = new NotifyIcon
             {
@@ -266,6 +268,7 @@ public partial class MainWindow : Window
         }
         
         contextMenu.Items.Add("-");
+        contextMenu.Items.Add("History", null, (s, e) => ShowHistory());
         contextMenu.Items.Add("Check for Updates", null, async (s, e) => await CheckForUpdatesAsync(showUpToDateMessage: true, showErrorsToUser: true));
         contextMenu.Items.Add("Settings", null, (s, e) => ShowSettings());
         contextMenu.Items.Add("-");
@@ -284,11 +287,11 @@ public partial class MainWindow : Window
             System.Threading.Thread.Sleep(200); // Small delay to hide the window
 
             var screenshot = _screenshotService.CaptureFullScreen();
-            OpenEditor(screenshot);
+            OpenEditor(screenshot, "FullScreen");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error capturing full screen: {ex.Message}");
+            MoneyShot.Services.Logger.Error("Error capturing full screen", ex);
             System.Windows.MessageBox.Show($"Failed to capture screenshot: {ex.Message}", "Capture Error", 
                 MessageBoxButton.OK, MessageBoxImage.Error);
             ShowMainWindow();
@@ -320,7 +323,7 @@ public partial class MainWindow : Window
             if (regionSelector.ShowDialog() == true && regionSelector.CroppedScreenshot != null)
             {
                 // Use the cropped screenshot from the frozen screen, not a new capture
-                OpenEditor(regionSelector.CroppedScreenshot);
+                OpenEditor(regionSelector.CroppedScreenshot, "Region");
             }
             else
             {
@@ -329,7 +332,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error capturing region: {ex.Message}");
+            MoneyShot.Services.Logger.Error("Error capturing region", ex);
             System.Windows.MessageBox.Show($"Failed to capture region: {ex.Message}", "Capture Error", 
                 MessageBoxButton.OK, MessageBoxImage.Error);
             ShowMainWindow();
@@ -346,21 +349,30 @@ public partial class MainWindow : Window
             System.Threading.Thread.Sleep(300);
 
             var screenshot = _screenshotService.CaptureScreen(monitorIndex);
-            OpenEditor(screenshot);
+            OpenEditor(screenshot, $"Monitor {monitorIndex + 1}");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error capturing monitor {monitorIndex}: {ex.Message}");
+            MoneyShot.Services.Logger.Error($"Error capturing monitor {monitorIndex}", ex);
             System.Windows.MessageBox.Show($"Failed to capture monitor: {ex.Message}", "Capture Error", 
                 MessageBoxButton.OK, MessageBoxImage.Error);
             ShowMainWindow();
         }
     }
 
-    private void OpenEditor(System.Windows.Media.Imaging.BitmapSource screenshot)
+    private void OpenEditor(System.Windows.Media.Imaging.BitmapSource screenshot, string source = "Capture")
     {
         try
         {
+            // Persist to local history before the user starts editing — this captures the raw
+            // screenshot, not the annotated final, so the history is a record of what the screen
+            // actually showed. Local-only by design; never uploaded.
+            var settings = _settingsService.LoadSettings();
+            if (settings.SaveCapturesToHistory)
+            {
+                _historyService.Save(screenshot, source, settings.HistoryRetentionCount);
+            }
+
             var editor = new EditorWindow(screenshot);
             editor.ShowDialog();
             // Don't show main window here - let it stay hidden as per user preference
@@ -368,7 +380,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error opening editor: {ex.Message}");
+            MoneyShot.Services.Logger.Error("Error opening editor", ex);
             System.Windows.MessageBox.Show($"Failed to open image editor: {ex.Message}", "Editor Error", 
                 MessageBoxButton.OK, MessageBoxImage.Error);
             // Show main window when error occurs so user knows something went wrong
@@ -380,6 +392,13 @@ public partial class MainWindow : Window
     {
         var settings = new SettingsWindow();
         settings.ShowDialog();
+    }
+
+    private void ShowHistory()
+    {
+        var history = new HistoryWindow(_historyService);
+        history.Show();
+        history.Activate();
     }
 
     private void ShowMainWindow()

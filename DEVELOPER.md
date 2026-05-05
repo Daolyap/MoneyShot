@@ -28,7 +28,17 @@ dotnet build MoneyShot/MoneyShot.csproj --configuration Debug
 dotnet build MoneyShot/MoneyShot.csproj --configuration Release
 ```
 
-### 4. Run the Application
+### 4. Run Tests
+```bash
+dotnet test MoneyShot.Tests/MoneyShot.Tests.csproj
+```
+
+Tests cover:
+- `HotKeyService.ParseHotKey` - Hotkey parsing with all modifier combinations
+- `SettingsService.ValidateAndSanitizeSettings` - Settings validation and path sanitization
+- `AutoUpdateService` - Version comparison, asset selection, SHA-256 verification
+
+### 5. Run the Application
 ```bash
 dotnet run --project MoneyShot/MoneyShot.csproj
 ```
@@ -57,9 +67,40 @@ Handles application settings:
 
 #### HotKeyService
 Manages global keyboard shortcuts:
+- `Initialize(window)` - Initializes hotkey listener with window handle
 - `RegisterHotKey(modifiers, key, action)` - Registers hotkey
 - `UnregisterHotKey(id)` - Removes hotkey
+- `ParseHotKey(string)` - Parses hotkey strings like "Ctrl+PrintScreen"
 - Uses Win32 API for global hotkey registration
+
+#### AutoUpdateService
+Manages automatic updates:
+- `GetAvailableUpdateAsync()` - Checks GitHub releases for new versions
+- `StageAndPrepareUpdateAsync(updateInfo)` - Downloads and verifies update
+- `ParseVersion(tag)` - Parses semantic version from release tags
+- `CompareSemVer(v1, v2)` - Compares versions ignoring build number
+- `SelectPreferredAsset(assets)` - Chooses .exe or .zip, skips MSI
+- `ParseSha256Sums(content)` - Parses SHA-256 checksums file
+- SHA-256 verification before installation for integrity checking
+
+#### Logger
+Static logging service:
+- `Logger.Debug(message)` - Debug-level logging
+- `Logger.Info(message)` - Info-level logging
+- `Logger.Warn(message)` - Warning-level logging
+- `Logger.Error(message, ex)` - Error-level logging with exception
+- Writes to both `Debug.WriteLine` (development) and rolling file (release)
+- Daily rolling logs at `%AppData%\MoneyShot\logs\` with 7-day retention
+
+#### HistoryService
+Manages screenshot history:
+- `Save(image, width, height, source)` - Saves screenshot to history
+- `List()` - Returns list of all saved captures
+- `LoadImage(entry)` - Loads full-resolution image
+- `LoadThumbnail(entry)` - Loads thumbnail (max 400px wide)
+- `Delete(entry)` - Removes capture from history
+- `EnforceRetention(maxCount)` - Enforces retention policy
+- Stores captures in `%AppData%\MoneyShot\history` with JSON metadata
 
 ### UI Components
 
@@ -71,11 +112,23 @@ Main application interface:
 - About information
 
 #### EditorWindow
-Screenshot annotation editor:
-- Toolbar with annotation tools
-- Color picker
-- Canvas for drawing
+Screenshot annotation editor (~2000 lines, refactored):
+- Toolbar with annotation tools (Rectangle, Circle, Arrow, Line, Text, Numbers, Blur)
+- Custom color picker with 8 presets + full color browser
+- Adjustable stroke thickness slider (1-10px)
+- Canvas with zoom support
+- Selection and resize handles (12×12 visual, 24×24 hit zone)
+- Endpoint resize for arrows and lines
+- Undo stack with all mutations
+- Crop tool
 - Save/copy functionality
+- Keyboard shortcuts overlay (`?` key)
+- Refactored with extracted components:
+  - `Editor/UndoController.cs` - Undo stack and action records
+  - `Editor/CanvasRenderer.cs` - Canvas capture and pixelation effects
+  - `Editor/CanvasPosition.cs` - Canvas position helpers with NaN handling
+  - `Editor/ElementResizeMode.cs` - Resize mode enumeration
+  - `Editor/ElementState.cs` - Element state record for undo
 
 #### RegionSelector
 Full-screen overlay for region selection:
@@ -89,6 +142,15 @@ Configuration interface:
 - File path and format selection
 - Startup options
 - Tray behavior
+- Hotkey configuration
+- History settings (capture toggle, retention count)
+
+#### HistoryWindow
+Screenshot history viewer:
+- Thumbnail grid with metadata (timestamp, dimensions, source)
+- Right-click context menu: Open in Editor, Copy to Clipboard, Delete
+- "Open History Folder" button to browse saved captures
+- Automatic thumbnail generation and caching
 
 ## Building for Release
 
@@ -133,8 +195,9 @@ The project includes automated CI/CD workflows:
 
 2. **Build** (`.github/workflows/build.yml`)
    - Runs on pull requests for validation
+   - Builds and runs xUnit test suite
    - Creates build artifacts for review
-   - Ensures code builds successfully before merge
+   - Ensures code builds and tests pass before merge
    - Uses build number for version synchronization
 
 3. **Build MSI Installer** (`.github/workflows/build-msi.yml`)
@@ -150,6 +213,8 @@ Releases are fully automated:
 - Version is extracted from `MoneyShot/MoneyShot.csproj`
 - Build number from `GITHUB_RUN_NUMBER` is appended to assembly and file versions
 - MSI installer version matches the executable version
+- SHA-256 checksums are generated for all release artifacts (zip and msi)
+- SHA256SUMS.txt file is uploaded alongside binaries for integrity verification
 - Build artifacts are automatically uploaded to GitHub Releases
 - Users can download the latest build from the Releases page
 
@@ -188,7 +253,11 @@ public enum AnnotationTool
 ```csharp
 private Shape CreateYourTool()
 {
-    // Create and return your shape
+    return new YourShape
+    {
+        Stroke = new SolidColorBrush(_currentColor),
+        StrokeThickness = _lineThickness
+    };
 }
 ```
 
@@ -196,6 +265,46 @@ private Shape CreateYourTool()
 ```csharp
 AnnotationTool.YourNewTool => CreateYourTool(),
 ```
+
+5. If the tool supports resizing, add cases in `SelectElement` for your shape type and implement resize handlers if needed.
+
+6. Add undo support by pushing action to `_undo.Push(...)` when tool is applied.
+
+### Adding Screenshot History
+
+The screenshot history feature is already implemented. To use it:
+
+1. **Auto-save** - Captures are automatically saved to history if `AppSettings.SaveCapturesToHistory` is true
+2. **Configure** - Users can toggle history and set retention count in Settings
+3. **Access** - Users access history from tray menu → "History"
+
+To save a new capture to history:
+```csharp
+_historyService.Save(bitmapImage, width, height, "Full Screen");
+```
+
+### Adding Logging
+
+The `Logger` static facade is the centralized logging service. Use it throughout the codebase:
+
+```csharp
+// Debug-level (dev only)
+Logger.Debug("Detailed diagnostic information");
+
+// Info-level
+Logger.Info("Screenshot captured successfully");
+
+// Warning-level
+Logger.Warn("Could not find setting, using default");
+
+// Error-level
+Logger.Error("Failed to save settings", exception);
+```
+
+Logs are written to:
+- `Debug.WriteLine` for IDE debugging
+- `%AppData%\MoneyShot\logs\moneyshot-YYYYMMDD.log` for production troubleshooting
+- Automatic 7-day retention policy
 
 ### Adding Settings
 
@@ -242,18 +351,53 @@ System.Diagnostics.Debug.WriteLine("Your debug message");
 
 ## Testing
 
+### Automated Testing
+
+The project includes a comprehensive xUnit test suite in `MoneyShot.Tests/`:
+
+**Running Tests:**
+```powershell
+dotnet test MoneyShot.Tests/MoneyShot.Tests.csproj
+```
+
+**Test Coverage:**
+- **HotKeyServiceTests** (19 tests)
+  - Hotkey parsing with all modifier combinations
+  - Case-insensitive key recognition
+  - Whitespace handling
+  - Unknown key rejection
+  
+- **SettingsServiceTests** (15 tests)
+  - Path validation and sanitization
+  - Relative/absolute path handling
+  - Forbidden character detection
+  - Line thickness clamping
+  - File format validation
+  
+- **AutoUpdateServiceTests** (19 tests)
+  - Semantic version comparison (ignoring build number)
+  - Asset selection (.exe preference, .zip fallback)
+  - SHA-256 hash verification
+  - Checksum file parsing
+
 ### Manual Testing Checklist
 - [ ] Full screen capture works on all monitors
 - [ ] Region selection captures correct area
-- [ ] All annotation tools draw correctly
-- [ ] Colors change when selected
-- [ ] Undo works for all tools
+- [ ] All annotation tools draw and resize correctly
+- [ ] Custom color picker opens and applies colors
+- [ ] Stroke thickness slider updates line weight in real-time
+- [ ] Endpoint resize works for arrows and lines
+- [ ] Undo works for all mutations (at least 5 steps)
+- [ ] Keyboard shortcuts overlay (`?`) displays correctly
 - [ ] Save to clipboard works
 - [ ] Save to file works
 - [ ] Settings persist across restarts
-- [ ] Hotkeys trigger captures
+- [ ] Hotkeys trigger captures (including custom hotkeys)
 - [ ] System tray menu works
 - [ ] Startup integration works
+- [ ] Screenshot history appears in capture history window
+- [ ] History right-click menu works (Open, Copy, Delete)
+- [ ] Auto-update check works and verifies SHA-256
 
 ## Performance Considerations
 
@@ -280,9 +424,28 @@ System.Diagnostics.Debug.WriteLine("Your debug message");
 
 See the roadmap in README.md for planned features.
 
+## Design Notes
+
+### Editor Architecture
+
+The editor is the most complex part of the codebase (~2000 lines). Key invariants:
+
+1. **Each resize handle owns its own MouseLeftButtonDown handler** - This prevents fragile manual hit-testing and snap-to-(0,0) bugs
+2. **Don't clamp cursor-mode positions** - Clamping is correct for drawing new shapes but wrong for moving/resizing existing ones
+3. **Initialize shapes with Width=0, Height=0** - Prevents shapes from briefly appearing at canvas (0,0)
+4. **Use CanvasPosition helpers** - Centralized NaN handling for Canvas.GetLeft/Top
+5. **Preserve state invariants** - _isResizing, _isEndpointResizing, _isDragging, _isDrawing are mutually exclusive
+
+For more detailed guidance, see `CLAUDE.md` in the repo root.
+
+## Future Enhancements
+
+See `Opus-Speaks.md` for the roadmap of planned features, deferred work, and follow-up tasks.
+
 ## Getting Help
 
 - Check existing issues on GitHub
-- Review this documentation
-- Examine the code - it's well-structured and commented
+- Review this documentation and `CLAUDE.md`
+- Examine the code - it's well-structured with minimal comments
+- Consult `Opus-Speaks.md` for context on deferred features and design decisions
 - Open a new issue if you're stuck
