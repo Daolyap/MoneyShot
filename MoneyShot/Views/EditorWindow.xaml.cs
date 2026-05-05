@@ -397,46 +397,14 @@ public partial class EditorWindow : Window
             ? rawPoint
             : ClampToCanvasBounds(rawPoint);
 
-        // Handle cursor mode for selection and moving
+        // Handle cursor mode for selection and moving.
+        // Resize handles attach their own MouseLeftButtonDown handler and mark
+        // the event Handled, so the canvas only sees clicks on the canvas
+        // background or on annotation elements.
         if (_currentTool == AnnotationTool.Cursor)
         {
-            // Check if clicking on a resize handle first
-            var resizeHandle = FindResizeHandleAtPoint(rawPoint);
-            if (resizeHandle != ElementResizeMode.None && _selectedElement != null)
-            {
-                _isResizing = true;
-                _resizeMode = resizeHandle;
-                _resizeStartPoint = rawPoint;
-                _resizeStartState = CaptureElementState(_selectedElement);
-                DrawingCanvas.CaptureMouse();
-                
-                // Store original dimensions
-                if (_selectedElement is Shape shape && !(_selectedElement is Line))
-                {
-                    _originalWidth = shape.Width;
-                    _originalHeight = shape.Height;
-                    _originalLeft = Canvas.GetLeft(shape);
-                    _originalTop = Canvas.GetTop(shape);
-                    if (double.IsNaN(_originalLeft)) _originalLeft = 0;
-                    if (double.IsNaN(_originalTop)) _originalTop = 0;
-                }
-                else if (_selectedElement is TextBlock textBlock)
-                {
-                    textBlock.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-                    _originalWidth = textBlock.ActualWidth > 0 ? textBlock.ActualWidth : textBlock.DesiredSize.Width;
-                    _originalHeight = textBlock.ActualHeight > 0 ? textBlock.ActualHeight : textBlock.DesiredSize.Height;
-                    _originalLeft = Canvas.GetLeft(textBlock);
-                    _originalTop = Canvas.GetTop(textBlock);
-                    _originalTextFontSize = textBlock.FontSize;
-                    if (double.IsNaN(_originalLeft)) _originalLeft = 0;
-                    if (double.IsNaN(_originalTop)) _originalTop = 0;
-                }
-                return;
-            }
-            
-            // Try to find an element at the click position
             var hitElement = FindElementAtPoint(rawPoint);
-            
+
             if (hitElement != null)
             {
                 SelectElement(hitElement);
@@ -666,22 +634,32 @@ public partial class EditorWindow : Window
 
     private Rectangle CreateRectangle()
     {
-        return new Rectangle
+        var rect = new Rectangle
         {
             Stroke = new SolidColorBrush(_currentColor),
             StrokeThickness = _lineThickness,
-            Fill = Brushes.Transparent
+            Fill = Brushes.Transparent,
+            Width = 0,
+            Height = 0
         };
+        Canvas.SetLeft(rect, _startPoint.X);
+        Canvas.SetTop(rect, _startPoint.Y);
+        return rect;
     }
 
     private Ellipse CreateEllipse()
     {
-        return new Ellipse
+        var ellipse = new Ellipse
         {
             Stroke = new SolidColorBrush(_currentColor),
             StrokeThickness = _lineThickness,
-            Fill = Brushes.Transparent
+            Fill = Brushes.Transparent,
+            Width = 0,
+            Height = 0
         };
+        Canvas.SetLeft(ellipse, _startPoint.X);
+        Canvas.SetTop(ellipse, _startPoint.Y);
+        return ellipse;
     }
 
     private Line CreateLine()
@@ -841,8 +819,12 @@ public partial class EditorWindow : Window
             StrokeThickness = 0,
             // Initially use a semi-transparent fill - will be replaced with pixelated image when drawn
             Fill = new SolidColorBrush(Color.FromArgb(128, 128, 128, 128)),
-            Tag = PixelateTag // Tag to identify this as a pixelate rectangle
+            Tag = PixelateTag, // Tag to identify this as a pixelate rectangle
+            Width = 0,
+            Height = 0
         };
+        Canvas.SetLeft(rect, _startPoint.X);
+        Canvas.SetTop(rect, _startPoint.Y);
         return rect;
     }
     
@@ -1265,45 +1247,71 @@ public partial class EditorWindow : Window
             Fill = color,
             Stroke = new SolidColorBrush(Colors.White),
             StrokeThickness = 1,
-            Cursor = GetResizeCursor(resizeMode)
+            Cursor = GetResizeCursor(resizeMode),
+            Tag = resizeMode
         };
+        handle.MouseLeftButtonDown += ResizeHandle_MouseLeftButtonDown;
         Canvas.SetLeft(handle, x);
         Canvas.SetTop(handle, y);
         DrawingCanvas.Children.Add(handle);
         return handle;
     }
-    
-    private ElementResizeMode FindResizeHandleAtPoint(Point point)
+
+    private void ResizeHandle_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (_resizeHandles.Count != 8) return ElementResizeMode.None;
-        
-        var tolerance = 5.0;
-        
-        for (int i = 0; i < _resizeHandles.Count; i++)
+        if (sender is not Rectangle handle || handle.Tag is not ElementResizeMode mode)
+            return;
+        if (_selectedElement == null)
+            return;
+
+        BeginResize(_selectedElement, mode, e.GetPosition(DrawingCanvas));
+        e.Handled = true;
+    }
+
+    private void BeginResize(UIElement element, ElementResizeMode mode, Point startPoint)
+    {
+        _isResizing = true;
+        _resizeMode = mode;
+        _resizeStartPoint = startPoint;
+        _resizeStartState = CaptureElementState(element);
+
+        if (element is Shape shape && element is not Line && element is not Path)
         {
-            var handle = _resizeHandles[i];
-            var left = Canvas.GetLeft(handle);
-            var top = Canvas.GetTop(handle);
-            
-            if (point.X >= left - tolerance && point.X <= left + handle.Width + tolerance &&
-                point.Y >= top - tolerance && point.Y <= top + handle.Height + tolerance)
-            {
-                return i switch
-                {
-                    0 => ElementResizeMode.TopLeft,
-                    1 => ElementResizeMode.TopRight,
-                    2 => ElementResizeMode.BottomLeft,
-                    3 => ElementResizeMode.BottomRight,
-                    4 => ElementResizeMode.Top,
-                    5 => ElementResizeMode.Bottom,
-                    6 => ElementResizeMode.Left,
-                    7 => ElementResizeMode.Right,
-                    _ => ElementResizeMode.None
-                };
-            }
+            var width = shape.Width;
+            var height = shape.Height;
+            if (double.IsNaN(width) || width <= 0) width = shape.ActualWidth;
+            if (double.IsNaN(height) || height <= 0) height = shape.ActualHeight;
+            if (double.IsNaN(width) || width <= 0) width = MinResizeDimension;
+            if (double.IsNaN(height) || height <= 0) height = MinResizeDimension;
+
+            _originalWidth = width;
+            _originalHeight = height;
+            _originalLeft = Canvas.GetLeft(shape);
+            _originalTop = Canvas.GetTop(shape);
+            if (double.IsNaN(_originalLeft)) _originalLeft = 0;
+            if (double.IsNaN(_originalTop)) _originalTop = 0;
         }
-        
-        return ElementResizeMode.None;
+        else if (element is TextBlock textBlock)
+        {
+            textBlock.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            _originalWidth = textBlock.ActualWidth > 0 ? textBlock.ActualWidth : textBlock.DesiredSize.Width;
+            _originalHeight = textBlock.ActualHeight > 0 ? textBlock.ActualHeight : textBlock.DesiredSize.Height;
+            if (_originalWidth <= 0) _originalWidth = MinResizeDimension;
+            if (_originalHeight <= 0) _originalHeight = MinResizeDimension;
+            _originalLeft = Canvas.GetLeft(textBlock);
+            _originalTop = Canvas.GetTop(textBlock);
+            _originalTextFontSize = textBlock.FontSize;
+            if (double.IsNaN(_originalLeft)) _originalLeft = 0;
+            if (double.IsNaN(_originalTop)) _originalTop = 0;
+        }
+        else
+        {
+            _isResizing = false;
+            _resizeStartState = null;
+            return;
+        }
+
+        DrawingCanvas.CaptureMouse();
     }
     
     private void ResizeElement(UIElement element, Point currentPoint)
