@@ -388,53 +388,28 @@ public partial class EditorWindow : Window
         if (e.LeftButton != MouseButtonState.Pressed)
             return;
 
-        var clickPoint = ClampToCanvasBounds(e.GetPosition(DrawingCanvas));
+        // Cursor-mode operations (drag/resize) use the raw position so that
+        // clamping does not corrupt _resizeStartPoint / _dragStartPoint and
+        // cause snap jumps when the cursor re-enters the canvas.
+        // Drawing tools use the clamped position to stay within the image bounds.
+        var rawPoint = e.GetPosition(DrawingCanvas);
+        var clickPoint = _currentTool == AnnotationTool.Cursor
+            ? rawPoint
+            : ClampToCanvasBounds(rawPoint);
 
-        // Handle cursor mode for selection and moving
+        // Handle cursor mode for selection and moving.
+        // Resize handles attach their own MouseLeftButtonDown handler and mark
+        // the event Handled, so the canvas only sees clicks on the canvas
+        // background or on annotation elements.
         if (_currentTool == AnnotationTool.Cursor)
         {
-            // Check if clicking on a resize handle first
-            var resizeHandle = FindResizeHandleAtPoint(clickPoint);
-            if (resizeHandle != ElementResizeMode.None && _selectedElement != null)
-            {
-                _isResizing = true;
-                _resizeMode = resizeHandle;
-                _resizeStartPoint = clickPoint;
-                _resizeStartState = CaptureElementState(_selectedElement);
-                DrawingCanvas.CaptureMouse();
-                
-                // Store original dimensions
-                if (_selectedElement is Shape shape && !(_selectedElement is Line))
-                {
-                    _originalWidth = shape.Width;
-                    _originalHeight = shape.Height;
-                    _originalLeft = Canvas.GetLeft(shape);
-                    _originalTop = Canvas.GetTop(shape);
-                    if (double.IsNaN(_originalLeft)) _originalLeft = 0;
-                    if (double.IsNaN(_originalTop)) _originalTop = 0;
-                }
-                else if (_selectedElement is TextBlock textBlock)
-                {
-                    textBlock.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-                    _originalWidth = textBlock.ActualWidth > 0 ? textBlock.ActualWidth : textBlock.DesiredSize.Width;
-                    _originalHeight = textBlock.ActualHeight > 0 ? textBlock.ActualHeight : textBlock.DesiredSize.Height;
-                    _originalLeft = Canvas.GetLeft(textBlock);
-                    _originalTop = Canvas.GetTop(textBlock);
-                    _originalTextFontSize = textBlock.FontSize;
-                    if (double.IsNaN(_originalLeft)) _originalLeft = 0;
-                    if (double.IsNaN(_originalTop)) _originalTop = 0;
-                }
-                return;
-            }
-            
-            // Try to find an element at the click position
-            var hitElement = FindElementAtPoint(clickPoint);
-            
+            var hitElement = FindElementAtPoint(rawPoint);
+
             if (hitElement != null)
             {
                 SelectElement(hitElement);
                 _isDragging = true;
-                _dragStartPoint = clickPoint;
+                _dragStartPoint = rawPoint;
                 DrawingCanvas.CaptureMouse();
             }
             else
@@ -506,23 +481,27 @@ public partial class EditorWindow : Window
 
     private void Canvas_MouseMove(object sender, MouseEventArgs e)
     {
-        var currentPoint = ClampToCanvasBounds(e.GetPosition(DrawingCanvas));
+        // Raw position for cursor-mode (drag/resize) to avoid ClampToCanvasBounds
+        // freezing _dragStartPoint at the canvas edge and causing jump-snaps when
+        // the cursor re-enters from a different position.
+        var rawPoint = e.GetPosition(DrawingCanvas);
+        var currentPoint = ClampToCanvasBounds(rawPoint);
 
-        // Handle resizing
+        // Handle resizing – use raw (unclamped) position
         if (_currentTool == AnnotationTool.Cursor && _isResizing && _selectedElement != null)
         {
-            ResizeElement(_selectedElement, currentPoint);
+            ResizeElement(_selectedElement, rawPoint);
             return;
         }
 
-        // Handle cursor mode for dragging elements
+        // Handle cursor mode for dragging elements – use raw (unclamped) position
         if (_currentTool == AnnotationTool.Cursor && _isDragging && _selectedElement != null)
         {
-            var deltaX = currentPoint.X - _dragStartPoint.X;
-            var deltaY = currentPoint.Y - _dragStartPoint.Y;
+            var deltaX = rawPoint.X - _dragStartPoint.X;
+            var deltaY = rawPoint.Y - _dragStartPoint.Y;
             
             MoveElement(_selectedElement, deltaX, deltaY);
-            _dragStartPoint = currentPoint;
+            _dragStartPoint = rawPoint;
             return;
         }
 
@@ -655,22 +634,32 @@ public partial class EditorWindow : Window
 
     private Rectangle CreateRectangle()
     {
-        return new Rectangle
+        var rect = new Rectangle
         {
             Stroke = new SolidColorBrush(_currentColor),
             StrokeThickness = _lineThickness,
-            Fill = Brushes.Transparent
+            Fill = Brushes.Transparent,
+            Width = 0,
+            Height = 0
         };
+        Canvas.SetLeft(rect, _startPoint.X);
+        Canvas.SetTop(rect, _startPoint.Y);
+        return rect;
     }
 
     private Ellipse CreateEllipse()
     {
-        return new Ellipse
+        var ellipse = new Ellipse
         {
             Stroke = new SolidColorBrush(_currentColor),
             StrokeThickness = _lineThickness,
-            Fill = Brushes.Transparent
+            Fill = Brushes.Transparent,
+            Width = 0,
+            Height = 0
         };
+        Canvas.SetLeft(ellipse, _startPoint.X);
+        Canvas.SetTop(ellipse, _startPoint.Y);
+        return ellipse;
     }
 
     private Line CreateLine()
@@ -830,8 +819,12 @@ public partial class EditorWindow : Window
             StrokeThickness = 0,
             // Initially use a semi-transparent fill - will be replaced with pixelated image when drawn
             Fill = new SolidColorBrush(Color.FromArgb(128, 128, 128, 128)),
-            Tag = PixelateTag // Tag to identify this as a pixelate rectangle
+            Tag = PixelateTag, // Tag to identify this as a pixelate rectangle
+            Width = 0,
+            Height = 0
         };
+        Canvas.SetLeft(rect, _startPoint.X);
+        Canvas.SetTop(rect, _startPoint.Y);
         return rect;
     }
     
@@ -1162,8 +1155,8 @@ public partial class EditorWindow : Window
         
         DrawingCanvas.Children.Add(_selectionBorder);
         
-        // Add resize handles for resizable elements
-        if ((element is Shape shape2 && !(element is Line)) || element is TextBlock)
+        // Add resize handles for resizable elements (not arrows/paths whose size comes from geometry)
+        if ((element is Shape shape2 && !(element is Line) && !(element is Path)) || element is TextBlock)
         {
             CreateResizeHandles(left, top, width, height);
         }
@@ -1254,95 +1247,122 @@ public partial class EditorWindow : Window
             Fill = color,
             Stroke = new SolidColorBrush(Colors.White),
             StrokeThickness = 1,
-            Cursor = GetResizeCursor(resizeMode)
+            Cursor = GetResizeCursor(resizeMode),
+            Tag = resizeMode
         };
+        handle.MouseLeftButtonDown += ResizeHandle_MouseLeftButtonDown;
         Canvas.SetLeft(handle, x);
         Canvas.SetTop(handle, y);
         DrawingCanvas.Children.Add(handle);
         return handle;
     }
-    
-    private ElementResizeMode FindResizeHandleAtPoint(Point point)
+
+    private void ResizeHandle_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (_resizeHandles.Count != 8) return ElementResizeMode.None;
-        
-        var tolerance = 5.0;
-        
-        for (int i = 0; i < _resizeHandles.Count; i++)
+        if (sender is not Rectangle handle || handle.Tag is not ElementResizeMode mode)
+            return;
+        if (_selectedElement == null)
+            return;
+
+        BeginResize(_selectedElement, mode, e.GetPosition(DrawingCanvas));
+        e.Handled = true;
+    }
+
+    private void BeginResize(UIElement element, ElementResizeMode mode, Point startPoint)
+    {
+        _isResizing = true;
+        _resizeMode = mode;
+        _resizeStartPoint = startPoint;
+        _resizeStartState = CaptureElementState(element);
+
+        if (element is Shape shape && element is not Line && element is not Path)
         {
-            var handle = _resizeHandles[i];
-            var left = Canvas.GetLeft(handle);
-            var top = Canvas.GetTop(handle);
-            
-            if (point.X >= left - tolerance && point.X <= left + handle.Width + tolerance &&
-                point.Y >= top - tolerance && point.Y <= top + handle.Height + tolerance)
-            {
-                return i switch
-                {
-                    0 => ElementResizeMode.TopLeft,
-                    1 => ElementResizeMode.TopRight,
-                    2 => ElementResizeMode.BottomLeft,
-                    3 => ElementResizeMode.BottomRight,
-                    4 => ElementResizeMode.Top,
-                    5 => ElementResizeMode.Bottom,
-                    6 => ElementResizeMode.Left,
-                    7 => ElementResizeMode.Right,
-                    _ => ElementResizeMode.None
-                };
-            }
+            var width = shape.Width;
+            var height = shape.Height;
+            if (double.IsNaN(width) || width <= 0) width = shape.ActualWidth;
+            if (double.IsNaN(height) || height <= 0) height = shape.ActualHeight;
+            if (double.IsNaN(width) || width <= 0) width = MinResizeDimension;
+            if (double.IsNaN(height) || height <= 0) height = MinResizeDimension;
+
+            _originalWidth = width;
+            _originalHeight = height;
+            _originalLeft = Canvas.GetLeft(shape);
+            _originalTop = Canvas.GetTop(shape);
+            if (double.IsNaN(_originalLeft)) _originalLeft = 0;
+            if (double.IsNaN(_originalTop)) _originalTop = 0;
         }
-        
-        return ElementResizeMode.None;
+        else if (element is TextBlock textBlock)
+        {
+            textBlock.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            _originalWidth = textBlock.ActualWidth > 0 ? textBlock.ActualWidth : textBlock.DesiredSize.Width;
+            _originalHeight = textBlock.ActualHeight > 0 ? textBlock.ActualHeight : textBlock.DesiredSize.Height;
+            if (_originalWidth <= 0) _originalWidth = MinResizeDimension;
+            if (_originalHeight <= 0) _originalHeight = MinResizeDimension;
+            _originalLeft = Canvas.GetLeft(textBlock);
+            _originalTop = Canvas.GetTop(textBlock);
+            _originalTextFontSize = textBlock.FontSize;
+            if (double.IsNaN(_originalLeft)) _originalLeft = 0;
+            if (double.IsNaN(_originalTop)) _originalTop = 0;
+        }
+        else
+        {
+            _isResizing = false;
+            _resizeStartState = null;
+            return;
+        }
+
+        DrawingCanvas.CaptureMouse();
     }
     
     private void ResizeElement(UIElement element, Point currentPoint)
     {
-        var originalRight = _originalLeft + _originalWidth;
-        var originalBottom = _originalTop + _originalHeight;
+        var deltaX = currentPoint.X - _resizeStartPoint.X;
+        var deltaY = currentPoint.Y - _resizeStartPoint.Y;
 
-        var leftEdge = _originalLeft;
-        var topEdge = _originalTop;
-        var rightEdge = originalRight;
-        var bottomEdge = originalBottom;
+        var newLeft = _originalLeft;
+        var newTop = _originalTop;
+        var newWidth = _originalWidth;
+        var newHeight = _originalHeight;
 
         switch (_resizeMode)
         {
             case ElementResizeMode.BottomRight:
-                rightEdge = Math.Max(_originalLeft + MinResizeDimension, currentPoint.X);
-                bottomEdge = Math.Max(_originalTop + MinResizeDimension, currentPoint.Y);
+                newWidth = Math.Max(MinResizeDimension, _originalWidth + deltaX);
+                newHeight = Math.Max(MinResizeDimension, _originalHeight + deltaY);
                 break;
             case ElementResizeMode.BottomLeft:
-                leftEdge = Math.Min(currentPoint.X, originalRight - MinResizeDimension);
-                bottomEdge = Math.Max(_originalTop + MinResizeDimension, currentPoint.Y);
+                newWidth = Math.Max(MinResizeDimension, _originalWidth - deltaX);
+                newHeight = Math.Max(MinResizeDimension, _originalHeight + deltaY);
+                newLeft = _originalLeft + (_originalWidth - newWidth);
                 break;
             case ElementResizeMode.TopRight:
-                rightEdge = Math.Max(_originalLeft + MinResizeDimension, currentPoint.X);
-                topEdge = Math.Min(currentPoint.Y, originalBottom - MinResizeDimension);
+                newWidth = Math.Max(MinResizeDimension, _originalWidth + deltaX);
+                newHeight = Math.Max(MinResizeDimension, _originalHeight - deltaY);
+                newTop = _originalTop + (_originalHeight - newHeight);
                 break;
             case ElementResizeMode.TopLeft:
-                leftEdge = Math.Min(currentPoint.X, originalRight - MinResizeDimension);
-                topEdge = Math.Min(currentPoint.Y, originalBottom - MinResizeDimension);
+                newWidth = Math.Max(MinResizeDimension, _originalWidth - deltaX);
+                newHeight = Math.Max(MinResizeDimension, _originalHeight - deltaY);
+                newLeft = _originalLeft + (_originalWidth - newWidth);
+                newTop = _originalTop + (_originalHeight - newHeight);
                 break;
             case ElementResizeMode.Right:
-                rightEdge = Math.Max(_originalLeft + MinResizeDimension, currentPoint.X);
+                newWidth = Math.Max(MinResizeDimension, _originalWidth + deltaX);
                 break;
             case ElementResizeMode.Left:
-                leftEdge = Math.Min(currentPoint.X, originalRight - MinResizeDimension);
+                newWidth = Math.Max(MinResizeDimension, _originalWidth - deltaX);
+                newLeft = _originalLeft + (_originalWidth - newWidth);
                 break;
             case ElementResizeMode.Bottom:
-                bottomEdge = Math.Max(_originalTop + MinResizeDimension, currentPoint.Y);
+                newHeight = Math.Max(MinResizeDimension, _originalHeight + deltaY);
                 break;
             case ElementResizeMode.Top:
-                topEdge = Math.Min(currentPoint.Y, originalBottom - MinResizeDimension);
+                newHeight = Math.Max(MinResizeDimension, _originalHeight - deltaY);
+                newTop = _originalTop + (_originalHeight - newHeight);
                 break;
         }
 
-        var newLeft = leftEdge;
-        var newTop = topEdge;
-        var newWidth = Math.Max(MinResizeDimension, rightEdge - leftEdge);
-        var newHeight = Math.Max(MinResizeDimension, bottomEdge - topEdge);
-
-        if (element is Shape shape && element is not Line)
+        if (element is Shape shape && element is not Line && element is not Path)
         {
             shape.Width = newWidth;
             shape.Height = newHeight;
