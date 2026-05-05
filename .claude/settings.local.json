@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(dotnet build *)",
-      "Bash(grep -E \"\\\\.md$|\\\\.svg$\")"
+      "Bash(grep -E \"\\\\.md$|\\\\.svg$\")",
+      "Bash(dotnet restore *)",
+      "Bash(dotnet test *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Logan Heath\\\\Documents\\\\Projects\\\\MoneyShot\" -File -Include \"*.md\", \"*.txt\" -Depth 0)",
+      "Bash(Sort-Object Name)",
+      "Bash(Select-Object Name)",
+      "PowerShell(ls \"C:\\\\Users\\\\Logan Heath\\\\Documents\\\\Projects\\\\MoneyShot\" | where {$_.Extension -eq '.md' -or $_.Extension -eq '.txt'} | select Name)"
     ]
   }
 }

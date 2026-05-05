@@ -27,4 +27,8 @@
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="MoneyShot.Tests" />
+  </ItemGroup>
+
 </Project>

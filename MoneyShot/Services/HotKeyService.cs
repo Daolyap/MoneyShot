@@ -215,14 +215,14 @@ public class HotKeyService
         {
             if (string.IsNullOrWhiteSpace(hotkeyString))
             {
-                System.Diagnostics.Debug.WriteLine("Hotkey string is null or empty");
+                Logger.Warn("Hotkey string is null or empty");
                 return -1;
             }
             
             var (modifiers, key) = ParseHotKey(hotkeyString);
             if (key == 0)
             {
-                System.Diagnostics.Debug.WriteLine($"Invalid hotkey: {hotkeyString}");
+                Logger.Warn($"Invalid hotkey: {hotkeyString}");
                 return -1;
             }
             
@@ -230,7 +230,7 @@ public class HotKeyService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error registering hotkey '{hotkeyString}': {ex.Message}");
+            Logger.Error($"Error registering hotkey '{hotkeyString}'", ex);
             return -1;
         }
     }

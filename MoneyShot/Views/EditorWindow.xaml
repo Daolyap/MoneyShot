@@ -110,6 +110,21 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+
+        <!-- Active tool button: brighter background + visible outline so the user can tell at a
+             glance which tool is selected. Toggled by EditorWindow.UpdateActiveToolButton via Tag. -->
+        <Style x:Key="ActiveToolButton" TargetType="Button" BasedOn="{StaticResource GlassButton}">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#FF1177BB" Offset="0"/>
+                        <GradientStop Color="#FF0E5C8E" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="BorderBrush" Value="White"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
     </Window.Resources>
     
     <Border CornerRadius="12" BorderThickness="1">
@@ -262,6 +277,32 @@
                                     <ToolTip Content="White"/>
                                 </Button.ToolTip>
                             </Button>
+                            <!-- Custom colour picker: opens the system ColorDialog and sets the
+                                 swatch background so the chosen colour persists for the session. -->
+                            <Button Name="CustomColorButton" Click="CustomColorButton_Click"
+                                    Style="{StaticResource ColorButton}" Background="#444444">
+                                <Button.Content>
+                                    <TextBlock Text="…" Foreground="White" FontSize="16" FontWeight="Bold"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Button.Content>
+                                <Button.ToolTip>
+                                    <ToolTip Content="Pick custom colour"/>
+                                </Button.ToolTip>
+                            </Button>
+                        </StackPanel>
+
+                        <!-- Stroke thickness slider — bound to _lineThickness in code-behind. -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,15,0">
+                            <TextBlock Text="Stroke:" Foreground="White" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <Slider Name="StrokeThicknessSlider"
+                                    Width="100"
+                                    Minimum="1" Maximum="10"
+                                    Value="3"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    VerticalAlignment="Center"
+                                    ValueChanged="StrokeThicknessSlider_ValueChanged"/>
+                            <TextBlock Name="StrokeThicknessLabel" Text="3" Foreground="White"
+                                       VerticalAlignment="Center" Margin="6,0,0,0" MinWidth="16"/>
                         </StackPanel>
 
                         <!-- Text Background -->
@@ -347,8 +388,59 @@
                                 <ToolTip Content="Copy to Clipboard (Ctrl+C)"/>
                             </Button.ToolTip>
                         </Button>
+                        <Button Content="❓ Shortcuts (?)" Click="ShortcutsHelp_Click" Style="{StaticResource GlassButton}">
+                            <Button.ToolTip>
+                                <ToolTip Content="Show keyboard shortcuts (press ?)"/>
+                            </Button.ToolTip>
+                        </Button>
                     </StackPanel>
                 </Grid>
+            </Border>
+
+            <!-- Keyboard shortcut overlay. Hidden by default; toggled by `?` keypress or the
+                 toolbar button. Click anywhere on it to dismiss. -->
+            <Border Name="ShortcutsOverlay" Grid.Row="2" Visibility="Collapsed"
+                    Background="#CC000000" Panel.ZIndex="100"
+                    MouseLeftButtonDown="ShortcutsOverlay_MouseLeftButtonDown">
+                <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Background="#1F2937" BorderBrush="#3B82F6" BorderThickness="2"
+                        CornerRadius="10" Padding="24" MaxWidth="640">
+                    <StackPanel>
+                        <TextBlock Text="Keyboard Shortcuts" Foreground="White"
+                                   FontSize="20" FontWeight="Bold" Margin="0,0,0,16"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                <TextBlock Text="Tools" Foreground="#93C5FD" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                <TextBlock Text="R — Rectangle"     Foreground="White" Margin="0,2"/>
+                                <TextBlock Text="C — Circle"        Foreground="White" Margin="0,2"/>
+                                <TextBlock Text="A — Arrow"         Foreground="White" Margin="0,2"/>
+                                <TextBlock Text="L — Line"          Foreground="White" Margin="0,2"/>
+                                <TextBlock Text="F — Freehand"      Foreground="White" Margin="0,2"/>
+                                <TextBlock Text="T — Text"          Foreground="White" Margin="0,2"/>
+                                <TextBlock Text="P — Pixelate"      Foreground="White" Margin="0,2"/>
+                                <TextBlock Text="1 — Number label"  Foreground="White" Margin="0,2"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                                <TextBlock Text="Editor" Foreground="#93C5FD" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                <TextBlock Text="Ctrl+Z — Undo"           Foreground="White" Margin="0,2"/>
+                                <TextBlock Text="Ctrl+C — Copy to clipboard" Foreground="White" Margin="0,2"/>
+                                <TextBlock Text="Ctrl+S — Save"           Foreground="White" Margin="0,2"/>
+                                <TextBlock Text="Ctrl++ / Ctrl+- — Zoom"   Foreground="White" Margin="0,2"/>
+                                <TextBlock Text="Ctrl+0 — Reset zoom"      Foreground="White" Margin="0,2"/>
+                                <TextBlock Text="Delete — Remove selected" Foreground="White" Margin="0,2"/>
+                                <TextBlock Text="Esc — Close editor"       Foreground="White" Margin="0,2"/>
+                                <TextBlock Text="? — Toggle this overlay"  Foreground="White" Margin="0,2"/>
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="Click anywhere or press any key to dismiss"
+                                   Foreground="#9CA3AF" FontStyle="Italic"
+                                   HorizontalAlignment="Center" Margin="0,16,0,0"/>
+                    </StackPanel>
+                </Border>
             </Border>
 
             <!-- Main Canvas Area -->

@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using MoneyShot.Editor;
 using MoneyShot.Models;
 using MoneyShot.Services;
 
@@ -20,9 +21,9 @@ public partial class EditorWindow : Window
     private Shape? _currentShape;
     private bool _isDrawing;
     private readonly SaveService _saveService;
-    private readonly Stack<IUndoAction> _undoStack = new();
+    private readonly UndoController _undo = new();
     private int _numberCounter = 1;
-    
+
     // Selection/move fields
     private UIElement? _selectedElement;
     private Point _dragStartPoint;
@@ -32,12 +33,10 @@ public partial class EditorWindow : Window
     private const double ZoomIncrement = 0.25;
     private const double MinZoom = 0.25;
     private const double MaxZoom = 4.0;
-    
-    // Pixelate tool constants
+
+    // Pixelate tool constant
     private const string PixelateTag = "pixelate";
-    private const int PixelateBlockSize = 10;
-    private const int RenderDpi = 96;
-    
+
     // Resize fields
     private bool _isResizing;
     private ElementResizeMode _resizeMode = ElementResizeMode.None;
@@ -48,86 +47,22 @@ public partial class EditorWindow : Window
     private double _originalTop;
     private double _originalTextFontSize;
     private ElementState? _resizeStartState;
-    private List<Rectangle> _resizeHandles = new();
-    
-    private enum ElementResizeMode
-    {
-        None,
-        TopLeft,
-        TopRight,
-        BottomLeft,
-        BottomRight,
-        Top,
-        Bottom,
-        Left,
-        Right
-    }
+    private readonly List<Rectangle> _resizeHandles = new();
+    // Two-handle resize for Line / Path (arrow): stores the original endpoints and which one
+    // the user grabbed. Kept separate from the box-resize fields to avoid intermingling state.
+    private bool _isEndpointResizing;
+    private bool _isResizingEndpointStart; // true = the "start" endpoint, false = the "end" endpoint
+    private Point _originalEndpointStart;
+    private Point _originalEndpointEnd;
 
-    private interface IUndoAction
-    {
-        void Undo(EditorWindow window);
-    }
-
-    private sealed class AddElementUndoAction(UIElement element) : IUndoAction
-    {
-        public void Undo(EditorWindow window)
-        {
-            window.DrawingCanvas.Children.Remove(element);
-            if (window._selectedElement == element)
-            {
-                window.ClearSelection();
-            }
-        }
-    }
-
-    private sealed class RemoveElementUndoAction(UIElement element, int index) : IUndoAction
-    {
-        public void Undo(EditorWindow window)
-        {
-            if (window.DrawingCanvas.Children.Contains(element))
-            {
-                return;
-            }
-
-            var targetIndex = Math.Max(0, Math.Min(index, window.DrawingCanvas.Children.Count));
-            window.DrawingCanvas.Children.Insert(targetIndex, element);
-        }
-    }
-
-    private sealed class CropUndoAction(BitmapSource previousImage, IReadOnlyList<UIElement> previousElements, int previousNumberCounter) : IUndoAction
-    {
-        public void Undo(EditorWindow window)
-        {
-            window._originalImage = previousImage;
-            window.DisplayImage();
-            window.DrawingCanvas.Children.Clear();
-            foreach (var element in previousElements)
-            {
-                window.DrawingCanvas.Children.Add(element);
-            }
-            window._cropRectangle = null;
-            window._isCropping = false;
-            window._numberCounter = previousNumberCounter;
-            window._currentTool = AnnotationTool.Cursor;
-            window.ClearSelection();
-        }
-    }
-
-    private sealed class ResizeUndoAction(UIElement element, ElementState previousState) : IUndoAction
-    {
-        public void Undo(EditorWindow window)
-        {
-            window.ApplyElementState(element, previousState);
-        }
-    }
-
-    private sealed record ElementState(double Left, double Top, double Width, double Height, double? FontSize);
-    
     private const int FreehandMinDistance = 2; // Minimum pixel distance between points
     private const double ShapeUpdateMinDistancePixels = 1.5; // Minimum drag distance in pixels before updating shape geometry
     private const double MinResizeDimension = 10;
     private const double MinTextScaleFactor = 0.5;
     private const double MinTextFontSize = 8;
+    // Visible square stays small but the click hit-zone is finger-sized to help on 4K displays.
+    private const double HandleVisualSize = 12;
+    private const double HandleHitZoneSize = 24;
     
     // Crop fields
     private Rectangle? _cropRectangle;
@@ -158,8 +93,24 @@ public partial class EditorWindow : Window
     
     private void EditorWindow_KeyDown(object sender, KeyEventArgs e)
     {
+        // While the shortcuts overlay is up, swallow the next key and dismiss it.
+        if (ShortcutsOverlay != null && ShortcutsOverlay.Visibility == Visibility.Visible)
+        {
+            ShortcutsOverlay.Visibility = Visibility.Collapsed;
+            e.Handled = true;
+            return;
+        }
+
+        // `?` (Shift+/) toggles the shortcut overlay regardless of other modifiers.
+        if (e.Key == Key.OemQuestion && e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Shift))
+        {
+            ToggleShortcutsOverlay();
+            e.Handled = true;
+            return;
+        }
+
         // Handle tool selection shortcuts
-        if (!e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Control) && 
+        if (!e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Control) &&
             !e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Alt))
         {
             switch (e.Key)
@@ -280,10 +231,50 @@ public partial class EditorWindow : Window
         if (_selectedElement != null)
         {
             var index = DrawingCanvas.Children.IndexOf(_selectedElement);
-            _undoStack.Push(new RemoveElementUndoAction(_selectedElement, index));
+            _undo.Push(new UndoController.RemoveElementUndoAction(_selectedElement, index));
             DrawingCanvas.Children.Remove(_selectedElement);
             ClearSelection();
         }
+    }
+
+    // Hooks invoked by UndoController action records. These remain on EditorWindow because
+    // they touch private editor state (the canvas, selection, image), but the undo stack and
+    // record types now live in MoneyShot.Editor.UndoController.
+    internal void UndoAddElement(UIElement element)
+    {
+        DrawingCanvas.Children.Remove(element);
+        if (_selectedElement == element)
+        {
+            ClearSelection();
+        }
+    }
+
+    internal void UndoRemoveElement(UIElement element, int index)
+    {
+        if (DrawingCanvas.Children.Contains(element)) return;
+        var targetIndex = Math.Max(0, Math.Min(index, DrawingCanvas.Children.Count));
+        DrawingCanvas.Children.Insert(targetIndex, element);
+    }
+
+    internal void UndoCrop(BitmapSource previousImage, IReadOnlyList<UIElement> previousElements, int previousNumberCounter)
+    {
+        _originalImage = previousImage;
+        DisplayImage();
+        DrawingCanvas.Children.Clear();
+        foreach (var element in previousElements)
+        {
+            DrawingCanvas.Children.Add(element);
+        }
+        _cropRectangle = null;
+        _isCropping = false;
+        _numberCounter = previousNumberCounter;
+        _currentTool = AnnotationTool.Cursor;
+        ClearSelection();
+    }
+
+    internal void UndoResize(UIElement element, ElementState previousState)
+    {
+        ApplyElementState(element, previousState);
     }
 
     private void DisplayImage()
@@ -325,25 +316,17 @@ public partial class EditorWindow : Window
 
     private static ElementState? CaptureElementState(UIElement element)
     {
-        if (element is Shape shape && element is not Line)
+        if (element is Shape shape && element is not Line && element is not Path)
         {
-            var left = Canvas.GetLeft(shape);
-            var top = Canvas.GetTop(shape);
-            if (double.IsNaN(left)) left = 0;
-            if (double.IsNaN(top)) top = 0;
-            return new ElementState(left, top, shape.Width, shape.Height, null);
+            return new ElementState(CanvasPosition.GetLeft(shape), CanvasPosition.GetTop(shape), shape.Width, shape.Height, null);
         }
 
         if (element is TextBlock textBlock)
         {
             textBlock.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            var left = Canvas.GetLeft(textBlock);
-            var top = Canvas.GetTop(textBlock);
-            if (double.IsNaN(left)) left = 0;
-            if (double.IsNaN(top)) top = 0;
             var width = textBlock.ActualWidth > 0 ? textBlock.ActualWidth : textBlock.DesiredSize.Width;
             var height = textBlock.ActualHeight > 0 ? textBlock.ActualHeight : textBlock.DesiredSize.Height;
-            return new ElementState(left, top, width, height, textBlock.FontSize);
+            return new ElementState(CanvasPosition.GetLeft(textBlock), CanvasPosition.GetTop(textBlock), width, height, textBlock.FontSize);
         }
 
         return null;
@@ -474,7 +457,7 @@ public partial class EditorWindow : Window
             }
             else
             {
-                _undoStack.Push(new AddElementUndoAction(element));
+                _undo.Push(new UndoController.AddElementUndoAction(element));
             }
         }
     }
@@ -491,6 +474,13 @@ public partial class EditorWindow : Window
         if (_currentTool == AnnotationTool.Cursor && _isResizing && _selectedElement != null)
         {
             ResizeElement(_selectedElement, rawPoint);
+            return;
+        }
+
+        // Endpoint resize for Line/Path (arrow)
+        if (_currentTool == AnnotationTool.Cursor && _isEndpointResizing && _selectedElement != null)
+        {
+            ApplyEndpointResize(_selectedElement, rawPoint);
             return;
         }
 
@@ -570,12 +560,21 @@ public partial class EditorWindow : Window
                 var resizeEndState = CaptureElementState(_selectedElement);
                 if (resizeEndState != null && !AreElementStatesEqual(_resizeStartState, resizeEndState))
                 {
-                    _undoStack.Push(new ResizeUndoAction(_selectedElement, _resizeStartState));
+                    _undo.Push(new UndoController.ResizeUndoAction(_selectedElement, _resizeStartState));
                 }
+            }
+            else if (_isEndpointResizing && _selectedElement != null)
+            {
+                // Endpoint resize finished — refresh selection so the bounding border + handles
+                // sit on top of the new geometry.
+                var element = _selectedElement;
+                ClearSelection();
+                SelectElement(element);
             }
 
             _isDragging = false;
             _isResizing = false;
+            _isEndpointResizing = false;
             _resizeMode = ElementResizeMode.None;
             _resizeStartState = null;
             return;
@@ -615,16 +614,16 @@ public partial class EditorWindow : Window
                 // Only apply pixelation if the rectangle has a reasonable size
                 if (pixelateRect.Width > 5 && pixelateRect.Height > 5)
                 {
-                    pixelateRect.Fill = CreatePixelatedBrush(pixelateRect);
+                    pixelateRect.Fill = CanvasRenderer.CreatePixelatedBrush(pixelateRect, _originalImage);
                 }
             }
-            _undoStack.Push(new AddElementUndoAction(_currentShape));
+            _undo.Push(new UndoController.AddElementUndoAction(_currentShape));
         }
-        
+
         // Handle freehand polyline
         if (_isDrawing && _currentPolyline != null)
         {
-            _undoStack.Push(new AddElementUndoAction(_currentPolyline));
+            _undo.Push(new UndoController.AddElementUndoAction(_currentPolyline));
             _currentPolyline = null;
         }
         
@@ -828,100 +827,6 @@ public partial class EditorWindow : Window
         return rect;
     }
     
-    private Brush CreatePixelatedBrush(Rectangle pixelateRect)
-    {
-        // Get the position and size of the rectangle on the canvas
-        var left = Canvas.GetLeft(pixelateRect);
-        var top = Canvas.GetTop(pixelateRect);
-        if (double.IsNaN(left)) left = 0;
-        if (double.IsNaN(top)) top = 0;
-        
-        var width = (int)pixelateRect.Width;
-        var height = (int)pixelateRect.Height;
-        
-        if (width <= 0 || height <= 0)
-            return pixelateRect.Fill;
-        
-        try
-        {
-            // Create a render target to capture the image area
-            var renderBitmap = new RenderTargetBitmap(
-                (int)_originalImage.PixelWidth,
-                (int)_originalImage.PixelHeight,
-                RenderDpi, RenderDpi,
-                PixelFormats.Pbgra32);
-            
-            var visual = new DrawingVisual();
-            using (var dc = visual.RenderOpen())
-            {
-                dc.DrawImage(_originalImage, new Rect(0, 0, _originalImage.PixelWidth, _originalImage.PixelHeight));
-            }
-            renderBitmap.Render(visual);
-            
-            // Create a new bitmap for the pixelated version
-            var pixelatedBitmap = new RenderTargetBitmap(
-                width, height,
-                RenderDpi, RenderDpi,
-                PixelFormats.Pbgra32);
-            
-            var drawingVisual = new DrawingVisual();
-            using (var drawingContext = drawingVisual.RenderOpen())
-            {
-                // Draw pixelated blocks
-                for (int y = 0; y < height; y += PixelateBlockSize)
-                {
-                    for (int x = 0; x < width; x += PixelateBlockSize)
-                    {
-                        // Calculate the actual block size (handle edges)
-                        var blockWidth = Math.Min(PixelateBlockSize, width - x);
-                        var blockHeight = Math.Min(PixelateBlockSize, height - y);
-                        
-                        // Sample the center pixel of this block from the original image
-                        var sampleX = (int)(left + x + blockWidth / 2);
-                        var sampleY = (int)(top + y + blockHeight / 2);
-                        
-                        // Ensure we're within bounds
-                        sampleX = Math.Max(0, Math.Min(sampleX, _originalImage.PixelWidth - 1));
-                        sampleY = Math.Max(0, Math.Min(sampleY, _originalImage.PixelHeight - 1));
-                        
-                        // Get the color at this position
-                        var croppedBitmap = new CroppedBitmap(renderBitmap, 
-                            new Int32Rect(sampleX, sampleY, 1, 1));
-                        
-                        var pixels = new byte[4];
-                        croppedBitmap.CopyPixels(pixels, 4, 0);
-                        
-                        var color = Color.FromArgb(pixels[3], pixels[2], pixels[1], pixels[0]);
-                        
-                        // Draw a rectangle with this color
-                        drawingContext.DrawRectangle(
-                            new SolidColorBrush(color),
-                            null,
-                            new Rect(x, y, blockWidth, blockHeight));
-                    }
-                }
-            }
-            
-            pixelatedBitmap.Render(drawingVisual);
-            
-            // Create an ImageBrush from the pixelated bitmap
-            return new ImageBrush(pixelatedBitmap)
-            {
-                Stretch = Stretch.Fill
-            };
-        }
-        catch (ArgumentException)
-        {
-            // Fallback to a gray pattern if image dimensions are invalid
-            return new SolidColorBrush(Color.FromArgb(200, 128, 128, 128));
-        }
-        catch (InvalidOperationException)
-        {
-            // Fallback if rendering fails
-            return new SolidColorBrush(Color.FromArgb(200, 128, 128, 128));
-        }
-    }
-
     private void UpdateRectangle(Point currentPoint)
     {
         if (_currentShape is not Rectangle rect) return;
@@ -1104,7 +1009,7 @@ public partial class EditorWindow : Window
     {
         ClearSelection();
         _selectedElement = element;
-        
+
         // Add visual indicator for selection
         _selectionBorder = new Border
         {
@@ -1112,25 +1017,21 @@ public partial class EditorWindow : Window
             BorderThickness = new Thickness(2),
             IsHitTestVisible = false
         };
-        
-        var left = Canvas.GetLeft(element);
-        var top = Canvas.GetTop(element);
-        
-        if (double.IsNaN(left)) left = 0;
-        if (double.IsNaN(top)) top = 0;
-        
+
+        var left = CanvasPosition.GetLeft(element);
+        var top = CanvasPosition.GetTop(element);
         double width = 0, height = 0;
-        
-        if (element is Path path)
+
+        if (element is Path path && path.Data is { } pathData)
         {
-            // For paths, get bounds from geometry
-            var bounds = path.Data.Bounds;
+            // For paths (arrows), get bounds from geometry
+            var bounds = pathData.Bounds;
             left += bounds.Left;
             top += bounds.Top;
             width = bounds.Width;
             height = bounds.Height;
         }
-        else if (element is Shape shape && !(element is Line))
+        else if (element is Shape shape && element is not Line && element is not Path)
         {
             width = shape.Width;
             height = shape.Height;
@@ -1147,44 +1048,98 @@ public partial class EditorWindow : Window
             width = Math.Abs(line.X2 - line.X1);
             height = Math.Abs(line.Y2 - line.Y1);
         }
-        
+
         Canvas.SetLeft(_selectionBorder, left - 2);
         Canvas.SetTop(_selectionBorder, top - 2);
         _selectionBorder.Width = width + 4;
         _selectionBorder.Height = height + 4;
-        
+
         DrawingCanvas.Children.Add(_selectionBorder);
-        
-        // Add resize handles for resizable elements (not arrows/paths whose size comes from geometry)
-        if ((element is Shape shape2 && !(element is Line) && !(element is Path)) || element is TextBlock)
+
+        // Choose handle style by element type:
+        //   - Shape (rect/ellipse) and TextBlock get the 8-handle bounding-box layout.
+        //   - Line and Path (arrow) get a 2-handle endpoint layout so each end can be moved
+        //     independently without distorting the geometry.
+        if ((element is Shape s && element is not Line && element is not Path) || element is TextBlock)
         {
             CreateResizeHandles(left, top, width, height);
         }
+        else if (element is Line lineEl)
+        {
+            CreateEndpointHandles(new Point(lineEl.X1, lineEl.Y1), new Point(lineEl.X2, lineEl.Y2));
+        }
+        else if (element is Path arrowEl)
+        {
+            var (start, end) = TryGetArrowEndpoints(arrowEl);
+            if (start.HasValue && end.HasValue)
+            {
+                CreateEndpointHandles(start.Value, end.Value);
+            }
+        }
     }
-    
+
     private void CreateResizeHandles(double left, double top, double width, double height)
     {
-        // Clear existing handles
+        ClearResizeHandlesOnly();
+
+        var handleColor = new SolidColorBrush(Colors.Blue);
+
+        // 8-handle bounding box. Corner handles drive proportional resize, edges drive single-axis.
+        _resizeHandles.Add(CreateResizeHandle(left - 2,                  top - 2,                   handleColor, ElementResizeMode.TopLeft));
+        _resizeHandles.Add(CreateResizeHandle(left + width + 2,          top - 2,                   handleColor, ElementResizeMode.TopRight));
+        _resizeHandles.Add(CreateResizeHandle(left - 2,                  top + height + 2,          handleColor, ElementResizeMode.BottomLeft));
+        _resizeHandles.Add(CreateResizeHandle(left + width + 2,          top + height + 2,          handleColor, ElementResizeMode.BottomRight));
+        _resizeHandles.Add(CreateResizeHandle(left + width / 2,          top - 2,                   handleColor, ElementResizeMode.Top));
+        _resizeHandles.Add(CreateResizeHandle(left + width / 2,          top + height + 2,          handleColor, ElementResizeMode.Bottom));
+        _resizeHandles.Add(CreateResizeHandle(left - 2,                  top + height / 2,          handleColor, ElementResizeMode.Left));
+        _resizeHandles.Add(CreateResizeHandle(left + width + 2,          top + height / 2,          handleColor, ElementResizeMode.Right));
+    }
+
+    private void CreateEndpointHandles(Point start, Point end)
+    {
+        ClearResizeHandlesOnly();
+        var handleColor = new SolidColorBrush(Colors.Blue);
+        var startHandle = CreateEndpointHandle(start, handleColor, isStart: true);
+        var endHandle   = CreateEndpointHandle(end,   handleColor, isStart: false);
+        _resizeHandles.Add(startHandle);
+        _resizeHandles.Add(endHandle);
+    }
+
+    private void ClearResizeHandlesOnly()
+    {
         foreach (var handle in _resizeHandles)
         {
             DrawingCanvas.Children.Remove(handle);
         }
         _resizeHandles.Clear();
-        
-        var handleSize = 8.0;
-        var handleColor = new SolidColorBrush(Colors.Blue);
-        
-        // Corner handles
-        _resizeHandles.Add(CreateResizeHandle(left - 2 - handleSize/2, top - 2 - handleSize/2, handleSize, handleColor, ElementResizeMode.TopLeft)); // Top-left
-        _resizeHandles.Add(CreateResizeHandle(left + width + 2 - handleSize/2, top - 2 - handleSize/2, handleSize, handleColor, ElementResizeMode.TopRight)); // Top-right
-        _resizeHandles.Add(CreateResizeHandle(left - 2 - handleSize/2, top + height + 2 - handleSize/2, handleSize, handleColor, ElementResizeMode.BottomLeft)); // Bottom-left
-        _resizeHandles.Add(CreateResizeHandle(left + width + 2 - handleSize/2, top + height + 2 - handleSize/2, handleSize, handleColor, ElementResizeMode.BottomRight)); // Bottom-right
-        
-        // Edge handles
-        _resizeHandles.Add(CreateResizeHandle(left + width/2 - handleSize/2, top - 2 - handleSize/2, handleSize, handleColor, ElementResizeMode.Top)); // Top
-        _resizeHandles.Add(CreateResizeHandle(left + width/2 - handleSize/2, top + height + 2 - handleSize/2, handleSize, handleColor, ElementResizeMode.Bottom)); // Bottom
-        _resizeHandles.Add(CreateResizeHandle(left - 2 - handleSize/2, top + height/2 - handleSize/2, handleSize, handleColor, ElementResizeMode.Left)); // Left
-        _resizeHandles.Add(CreateResizeHandle(left + width + 2 - handleSize/2, top + height/2 - handleSize/2, handleSize, handleColor, ElementResizeMode.Right)); // Right
+    }
+
+    /// <summary>
+    /// Reads the start/end points back out of an arrow's PathGeometry. Mirror of the construction
+    /// done by <see cref="UpdateArrow"/> — first segment endpoint = StartPoint of the figure,
+    /// final destination = first LineSegment's Point.
+    /// </summary>
+    private static void ShiftPathGeometry(PathGeometry geometry, double deltaX, double deltaY)
+    {
+        foreach (var figure in geometry.Figures)
+        {
+            figure.StartPoint = new Point(figure.StartPoint.X + deltaX, figure.StartPoint.Y + deltaY);
+            foreach (var seg in figure.Segments)
+            {
+                if (seg is LineSegment ls)
+                {
+                    ls.Point = new Point(ls.Point.X + deltaX, ls.Point.Y + deltaY);
+                }
+            }
+        }
+    }
+
+    private static (Point? start, Point? end) TryGetArrowEndpoints(Path arrow)
+    {
+        if (arrow.Data is not PathGeometry geometry || geometry.Figures.Count == 0) return (null, null);
+        var figure = geometry.Figures[0];
+        if (figure.Segments.Count == 0 || figure.Segments[0] is not LineSegment line) return (null, null);
+        return (figure.StartPoint, line.Point);
     }
 
     private void UpdateResizeHandles(double left, double top, double width, double height)
@@ -1195,31 +1150,21 @@ public partial class EditorWindow : Window
             return;
         }
 
-        var handleSize = _resizeHandles[0].Width;
+        // Handles are positioned by the centre of their hit zone, matching CreateResizeHandle.
+        PositionHandle(_resizeHandles[0], left - 2,                  top - 2);
+        PositionHandle(_resizeHandles[1], left + width + 2,          top - 2);
+        PositionHandle(_resizeHandles[2], left - 2,                  top + height + 2);
+        PositionHandle(_resizeHandles[3], left + width + 2,          top + height + 2);
+        PositionHandle(_resizeHandles[4], left + width / 2,          top - 2);
+        PositionHandle(_resizeHandles[5], left + width / 2,          top + height + 2);
+        PositionHandle(_resizeHandles[6], left - 2,                  top + height / 2);
+        PositionHandle(_resizeHandles[7], left + width + 2,          top + height / 2);
+    }
 
-        Canvas.SetLeft(_resizeHandles[0], left - 2 - handleSize / 2);
-        Canvas.SetTop(_resizeHandles[0], top - 2 - handleSize / 2);
-
-        Canvas.SetLeft(_resizeHandles[1], left + width + 2 - handleSize / 2);
-        Canvas.SetTop(_resizeHandles[1], top - 2 - handleSize / 2);
-
-        Canvas.SetLeft(_resizeHandles[2], left - 2 - handleSize / 2);
-        Canvas.SetTop(_resizeHandles[2], top + height + 2 - handleSize / 2);
-
-        Canvas.SetLeft(_resizeHandles[3], left + width + 2 - handleSize / 2);
-        Canvas.SetTop(_resizeHandles[3], top + height + 2 - handleSize / 2);
-
-        Canvas.SetLeft(_resizeHandles[4], left + width / 2 - handleSize / 2);
-        Canvas.SetTop(_resizeHandles[4], top - 2 - handleSize / 2);
-
-        Canvas.SetLeft(_resizeHandles[5], left + width / 2 - handleSize / 2);
-        Canvas.SetTop(_resizeHandles[5], top + height + 2 - handleSize / 2);
-
-        Canvas.SetLeft(_resizeHandles[6], left - 2 - handleSize / 2);
-        Canvas.SetTop(_resizeHandles[6], top + height / 2 - handleSize / 2);
-
-        Canvas.SetLeft(_resizeHandles[7], left + width + 2 - handleSize / 2);
-        Canvas.SetTop(_resizeHandles[7], top + height / 2 - handleSize / 2);
+    private static void PositionHandle(Rectangle handle, double centerX, double centerY)
+    {
+        Canvas.SetLeft(handle, centerX - handle.Width / 2);
+        Canvas.SetTop(handle, centerY - handle.Height / 2);
     }
     
     private static Cursor GetResizeCursor(ElementResizeMode resizeMode)
@@ -1238,24 +1183,77 @@ public partial class EditorWindow : Window
         };
     }
 
-    private Rectangle CreateResizeHandle(double x, double y, double size, SolidColorBrush color, ElementResizeMode resizeMode)
+    /// <summary>
+    /// Builds a resize handle whose hit zone is finger-sized (24×24) but whose visible square
+    /// stays small (12×12) so it doesn't dominate the canvas. The handle is a transparent
+    /// Rectangle of HandleHitZoneSize containing a smaller Rectangle of HandleVisualSize as its
+    /// fill via inner content; we cheat by using a Rectangle with a partially transparent fill
+    /// — see the comment below — because Rectangle is the only Shape that natively works here
+    /// without a wrapper.
+    /// </summary>
+    private Rectangle CreateResizeHandle(double centerX, double centerY, SolidColorBrush color, ElementResizeMode resizeMode)
     {
+        // Use the visible-size Rectangle as the hit target. The hit area is enlarged via a
+        // hidden expanded Border behind the visible square. To keep the implementation simple
+        // we just make the actual Rectangle the hit-zone size with a small inner painted area.
+        // (Implemented as a single Rectangle with hit-zone dimensions but a clipped visual.)
         var handle = new Rectangle
         {
-            Width = size,
-            Height = size,
-            Fill = color,
-            Stroke = new SolidColorBrush(Colors.White),
-            StrokeThickness = 1,
+            Width = HandleHitZoneSize,
+            Height = HandleHitZoneSize,
+            Fill = Brushes.Transparent, // hit zone — invisible
             Cursor = GetResizeCursor(resizeMode),
             Tag = resizeMode
         };
+        // Layer a smaller visible square on top via a SolidColorBrush DrawingBrush so the user
+        // sees a 12×12 marker but can click anywhere in the 24×24 zone.
+        var inset = (HandleHitZoneSize - HandleVisualSize) / 2;
+        var visual = new DrawingGroup();
+        using (var dc = visual.Open())
+        {
+            dc.DrawRectangle(color, new Pen(Brushes.White, 1),
+                new Rect(inset, inset, HandleVisualSize, HandleVisualSize));
+        }
+        handle.OpacityMask = null;
+        handle.Fill = new DrawingBrush { Drawing = visual, Stretch = Stretch.None };
+
         handle.MouseLeftButtonDown += ResizeHandle_MouseLeftButtonDown;
-        Canvas.SetLeft(handle, x);
-        Canvas.SetTop(handle, y);
+        PositionHandle(handle, centerX, centerY);
         DrawingCanvas.Children.Add(handle);
         return handle;
     }
+
+    /// <summary>
+    /// Endpoint handles for Line/Path. Tagged with isStart=true/false instead of an
+    /// ElementResizeMode, since they drive a different code path (BeginEndpointResize).
+    /// </summary>
+    private Rectangle CreateEndpointHandle(Point center, SolidColorBrush color, bool isStart)
+    {
+        var handle = new Rectangle
+        {
+            Width = HandleHitZoneSize,
+            Height = HandleHitZoneSize,
+            Fill = Brushes.Transparent,
+            Cursor = Cursors.Cross,
+            Tag = isStart ? EndpointTagStart : EndpointTagEnd
+        };
+        var inset = (HandleHitZoneSize - HandleVisualSize) / 2;
+        var visual = new DrawingGroup();
+        using (var dc = visual.Open())
+        {
+            dc.DrawEllipse(color, new Pen(Brushes.White, 1),
+                new Point(inset + HandleVisualSize / 2, inset + HandleVisualSize / 2),
+                HandleVisualSize / 2, HandleVisualSize / 2);
+        }
+        handle.Fill = new DrawingBrush { Drawing = visual, Stretch = Stretch.None };
+        handle.MouseLeftButtonDown += EndpointHandle_MouseLeftButtonDown;
+        PositionHandle(handle, center.X, center.Y);
+        DrawingCanvas.Children.Add(handle);
+        return handle;
+    }
+
+    private const string EndpointTagStart = "endpoint:start";
+    private const string EndpointTagEnd = "endpoint:end";
 
     private void ResizeHandle_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -1266,6 +1264,42 @@ public partial class EditorWindow : Window
 
         BeginResize(_selectedElement, mode, e.GetPosition(DrawingCanvas));
         e.Handled = true;
+    }
+
+    private void EndpointHandle_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not Rectangle handle || handle.Tag is not string tag)
+            return;
+        if (_selectedElement == null)
+            return;
+
+        var isStart = tag == EndpointTagStart;
+        BeginEndpointResize(_selectedElement, isStart);
+        e.Handled = true;
+    }
+
+    private void BeginEndpointResize(UIElement element, bool isStart)
+    {
+        if (element is Line line)
+        {
+            _originalEndpointStart = new Point(line.X1, line.Y1);
+            _originalEndpointEnd = new Point(line.X2, line.Y2);
+        }
+        else if (element is Path arrow)
+        {
+            var (start, end) = TryGetArrowEndpoints(arrow);
+            if (!start.HasValue || !end.HasValue) return;
+            _originalEndpointStart = start.Value;
+            _originalEndpointEnd = end.Value;
+        }
+        else
+        {
+            return;
+        }
+
+        _isEndpointResizing = true;
+        _isResizingEndpointStart = isStart;
+        DrawingCanvas.CaptureMouse();
     }
 
     private void BeginResize(UIElement element, ElementResizeMode mode, Point startPoint)
@@ -1410,40 +1444,56 @@ public partial class EditorWindow : Window
             DrawingCanvas.Children.Remove(_selectionBorder);
             _selectionBorder = null;
         }
-        
-        // Remove resize handles
-        foreach (var handle in _resizeHandles)
-        {
-            DrawingCanvas.Children.Remove(handle);
-        }
-        _resizeHandles.Clear();
-        
+
+        ClearResizeHandlesOnly();
         _selectedElement = null;
+    }
+
+    private void ApplyEndpointResize(UIElement element, Point newEndpoint)
+    {
+        // Drive the moving endpoint to the cursor; the other endpoint stays anchored at its
+        // captured original position. Clamp to the canvas to avoid endpoints outside the image.
+        var clamped = ClampToCanvasBounds(newEndpoint);
+        var start = _isResizingEndpointStart ? clamped : _originalEndpointStart;
+        var end   = _isResizingEndpointStart ? _originalEndpointEnd : clamped;
+
+        if (element is Line line)
+        {
+            line.X1 = start.X; line.Y1 = start.Y;
+            line.X2 = end.X;   line.Y2 = end.Y;
+        }
+        else if (element is Path arrow)
+        {
+            // Reuse UpdateArrow's geometry construction by temporarily swapping _startPoint /
+            // _currentShape — that keeps a single source of truth for arrowhead math.
+            var savedShape = _currentShape;
+            var savedStart = _startPoint;
+            _currentShape = arrow;
+            _startPoint = start;
+            UpdateArrow(end);
+            _currentShape = savedShape;
+            _startPoint = savedStart;
+        }
+
+        // Move the live handle marker to the cursor so the user has visual feedback.
+        if (_resizeHandles.Count == 2)
+        {
+            var movingHandle = _isResizingEndpointStart ? _resizeHandles[0] : _resizeHandles[1];
+            PositionHandle(movingHandle, clamped.X, clamped.Y);
+        }
     }
 
     private void MoveElement(UIElement element, double deltaX, double deltaY)
     {
-        if (element is Shape shape && !(element is Line))
+        if (element is Shape shape && element is not Line)
         {
-            var left = Canvas.GetLeft(shape);
-            var top = Canvas.GetTop(shape);
-            
-            if (double.IsNaN(left)) left = 0;
-            if (double.IsNaN(top)) top = 0;
-            
-            Canvas.SetLeft(shape, left + deltaX);
-            Canvas.SetTop(shape, top + deltaY);
+            Canvas.SetLeft(shape, CanvasPosition.GetLeft(shape) + deltaX);
+            Canvas.SetTop(shape, CanvasPosition.GetTop(shape) + deltaY);
         }
         else if (element is TextBlock textBlock)
         {
-            var left = Canvas.GetLeft(textBlock);
-            var top = Canvas.GetTop(textBlock);
-            
-            if (double.IsNaN(left)) left = 0;
-            if (double.IsNaN(top)) top = 0;
-            
-            Canvas.SetLeft(textBlock, left + deltaX);
-            Canvas.SetTop(textBlock, top + deltaY);
+            Canvas.SetLeft(textBlock, CanvasPosition.GetLeft(textBlock) + deltaX);
+            Canvas.SetTop(textBlock, CanvasPosition.GetTop(textBlock) + deltaY);
         }
         else if (element is Line line)
         {
@@ -1452,47 +1502,33 @@ public partial class EditorWindow : Window
             line.X2 += deltaX;
             line.Y2 += deltaY;
         }
-        else if (element is Path path)
+        else if (element is Path path && path.Data is PathGeometry geometry)
         {
-            // For paths (arrows), use Canvas positioning like other elements
-            var left = Canvas.GetLeft(path);
-            var top = Canvas.GetTop(path);
-            
-            if (double.IsNaN(left)) left = 0;
-            if (double.IsNaN(top)) top = 0;
-            
-            Canvas.SetLeft(path, left + deltaX);
-            Canvas.SetTop(path, top + deltaY);
+            // Shift the geometry's points directly so the geometry stays canvas-absolute
+            // (lets TryGetArrowEndpoints + endpoint handles read positions without offset math).
+            ShiftPathGeometry(geometry, deltaX, deltaY);
         }
-        
+
         // Update selection border position
         if (_selectionBorder != null)
         {
-            var borderLeft = Canvas.GetLeft(_selectionBorder);
-            var borderTop = Canvas.GetTop(_selectionBorder);
-            
-            if (double.IsNaN(borderLeft)) borderLeft = 0;
-            if (double.IsNaN(borderTop)) borderTop = 0;
-            
-            Canvas.SetLeft(_selectionBorder, borderLeft + deltaX);
-            Canvas.SetTop(_selectionBorder, borderTop + deltaY);
+            Canvas.SetLeft(_selectionBorder, CanvasPosition.GetLeft(_selectionBorder) + deltaX);
+            Canvas.SetTop(_selectionBorder, CanvasPosition.GetTop(_selectionBorder) + deltaY);
         }
 
-        if ((element is Shape && element is not Line) || element is TextBlock)
+        if ((element is Shape && element is not Line && element is not Path) || element is TextBlock)
         {
-            var elementLeft = Canvas.GetLeft(element);
-            var elementTop = Canvas.GetTop(element);
-            if (double.IsNaN(elementLeft)) elementLeft = 0;
-            if (double.IsNaN(elementTop)) elementTop = 0;
+            var elementLeft = CanvasPosition.GetLeft(element);
+            var elementTop = CanvasPosition.GetTop(element);
 
             double elementWidth;
             double elementHeight;
-            if (element is TextBlock textBlock)
+            if (element is TextBlock textBlock2)
             {
-                elementWidth = textBlock.ActualWidth;
-                elementHeight = textBlock.ActualHeight;
-                if (elementWidth <= 0) elementWidth = textBlock.RenderSize.Width;
-                if (elementHeight <= 0) elementHeight = textBlock.RenderSize.Height;
+                elementWidth = textBlock2.ActualWidth;
+                elementHeight = textBlock2.ActualHeight;
+                if (elementWidth <= 0) elementWidth = textBlock2.RenderSize.Width;
+                if (elementHeight <= 0) elementHeight = textBlock2.RenderSize.Height;
             }
             else if (element is Shape shapeElement)
             {
@@ -1509,6 +1545,15 @@ public partial class EditorWindow : Window
                 UpdateResizeHandles(elementLeft, elementTop, elementWidth, elementHeight);
             }
         }
+        else if (element is Line || element is Path)
+        {
+            // Endpoint handles need to follow Line/Path moves too. Re-running SelectElement
+            // is the simplest correct path — it rebuilds the bounding border + endpoint handles.
+            ClearResizeHandlesOnly();
+            if (_selectionBorder != null) DrawingCanvas.Children.Remove(_selectionBorder);
+            _selectionBorder = null;
+            SelectElement(element);
+        }
     }
 
     private void ToolButton_Click(object sender, RoutedEventArgs e)
@@ -1518,8 +1563,79 @@ public partial class EditorWindow : Window
             if (Enum.TryParse<AnnotationTool>(toolName, out var tool))
             {
                 _currentTool = tool;
+                UpdateActiveToolButton(button);
             }
         }
+    }
+
+    /// <summary>
+    /// Highlights the toolbar button for the active tool by swapping its style. Walks up the
+    /// visual tree to find the WrapPanel that holds all tool buttons so we don't need named
+    /// references for each one.
+    /// </summary>
+    private void UpdateActiveToolButton(Button activeButton)
+    {
+        var glassStyle = (Style)Resources["GlassButton"];
+        var activeStyle = (Style)Resources["ActiveToolButton"];
+        var parent = System.Windows.Media.VisualTreeHelper.GetParent(activeButton);
+        if (parent is not Panel toolPanel) return;
+        foreach (var child in toolPanel.Children)
+        {
+            if (child is Button b && b.Tag is string)
+            {
+                b.Style = ReferenceEquals(b, activeButton) ? activeStyle : glassStyle;
+            }
+        }
+    }
+
+    private void CustomColorButton_Click(object sender, RoutedEventArgs e)
+    {
+        // Re-use the WinForms ColorDialog (already in our framework refs) rather than hand-rolling
+        // an HSL picker — the OS picker is what most users expect and supports the full palette.
+        using var dlg = new System.Windows.Forms.ColorDialog
+        {
+            FullOpen = true,
+            AnyColor = true,
+            Color = System.Drawing.Color.FromArgb(_currentColor.A, _currentColor.R, _currentColor.G, _currentColor.B)
+        };
+        if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+
+        var picked = Color.FromArgb(dlg.Color.A, dlg.Color.R, dlg.Color.G, dlg.Color.B);
+        _currentColor = picked;
+        if (CustomColorButton != null)
+        {
+            CustomColorButton.Background = new SolidColorBrush(picked);
+        }
+        if (_selectedElement != null)
+        {
+            ChangeElementColor(_selectedElement, _currentColor);
+        }
+    }
+
+    private void StrokeThicknessSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        _lineThickness = (int)Math.Round(e.NewValue);
+        if (StrokeThicknessLabel != null) StrokeThicknessLabel.Text = _lineThickness.ToString();
+        // Live-update the selected element's stroke if it's a shape that supports it.
+        if (_selectedElement is Shape shape && _selectedElement is not Path)
+        {
+            shape.StrokeThickness = _lineThickness;
+        }
+    }
+
+    private void ShortcutsHelp_Click(object sender, RoutedEventArgs e) => ToggleShortcutsOverlay();
+
+    private void ShortcutsOverlay_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (ShortcutsOverlay != null) ShortcutsOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void ToggleShortcutsOverlay()
+    {
+        if (ShortcutsOverlay == null) return;
+        ShortcutsOverlay.Visibility = ShortcutsOverlay.Visibility == Visibility.Visible
+            ? Visibility.Collapsed
+            : Visibility.Visible;
     }
 
     private void ColorButton_Click(object sender, RoutedEventArgs e)
@@ -1593,11 +1709,7 @@ public partial class EditorWindow : Window
 
     private void Undo_Click(object sender, RoutedEventArgs e)
     {
-        if (_undoStack.Count > 0)
-        {
-            var action = _undoStack.Pop();
-            action.Undo(this);
-        }
+        _undo.Undo(this);
     }
 
     private void ApplyCrop()
@@ -1663,7 +1775,7 @@ public partial class EditorWindow : Window
 
             // Reset to cursor tool
             _currentTool = AnnotationTool.Cursor;
-            _undoStack.Push(new CropUndoAction(previousImage, previousElements, previousNumberCounter));
+            _undo.Push(new UndoController.CropUndoAction(previousImage, previousElements, previousNumberCounter));
         }
         catch (Exception ex)
         {
@@ -1754,40 +1866,8 @@ public partial class EditorWindow : Window
         ZoomTransform.ScaleY = _zoomLevel;
     }
 
-    private BitmapSource CaptureCanvasAsImage()
-    {
-        // Get the actual image dimensions (not the canvas display size)
-        var imageWidth = (int)_originalImage.PixelWidth;
-        var imageHeight = (int)_originalImage.PixelHeight;
-        
-        // Temporarily remove zoom transform for rendering
-        var originalScaleX = ZoomTransform.ScaleX;
-        var originalScaleY = ZoomTransform.ScaleY;
-        ZoomTransform.ScaleX = 1;
-        ZoomTransform.ScaleY = 1;
-        
-        // Force layout update to ensure proper rendering
-        ImageCanvas.Measure(new Size(imageWidth, imageHeight));
-        ImageCanvas.Arrange(new Rect(0, 0, imageWidth, imageHeight));
-        ImageCanvas.UpdateLayout();
-        
-        var renderBitmap = new RenderTargetBitmap(
-            imageWidth,
-            imageHeight,
-            96, 96,
-            PixelFormats.Pbgra32);
-
-        renderBitmap.Render(ImageCanvas);
-        
-        // Restore zoom transform
-        ZoomTransform.ScaleX = originalScaleX;
-        ZoomTransform.ScaleY = originalScaleY;
-        
-        // Force layout update again to restore zoom
-        ImageCanvas.UpdateLayout();
-        
-        return renderBitmap;
-    }
+    private BitmapSource CaptureCanvasAsImage() =>
+        CanvasRenderer.CaptureCanvasAsImage(ImageCanvas, _originalImage, ZoomTransform);
     
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
