@@ -381,12 +381,43 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             MoneyShot.Services.Logger.Error("Error opening editor", ex);
-            System.Windows.MessageBox.Show($"Failed to open image editor: {ex.Message}", "Editor Error", 
+            System.Windows.MessageBox.Show($"Failed to open image editor: {ex.Message}", "Editor Error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             // Show main window when error occurs so user knows something went wrong
             ShowMainWindow();
         }
+        finally
+        {
+            // The editor's BitmapSource backings, RenderTargetBitmaps and pixelate brushes live in
+            // both managed and native heaps. Without forcing a collection plus a working-set trim,
+            // the process sits at several hundred MB until the next major GC — undesirable for a
+            // tray app that should hover near 80MB while idle.
+            ReleaseEditorMemory();
+        }
     }
+
+    private static void ReleaseEditorMemory()
+    {
+        try
+        {
+            System.Runtime.GCSettings.LargeObjectHeapCompactionMode =
+                System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            // Ask Windows to trim the working set. -1, -1 is the documented "trim now" sentinel.
+            using var process = System.Diagnostics.Process.GetCurrentProcess();
+            SetProcessWorkingSetSize(process.Handle, new IntPtr(-1), new IntPtr(-1));
+        }
+        catch (Exception ex)
+        {
+            MoneyShot.Services.Logger.Warn("Could not release editor memory", ex);
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetProcessWorkingSetSize(IntPtr proc, IntPtr min, IntPtr max);
 
     private void ShowSettings()
     {

@@ -17,17 +17,23 @@ internal static class CanvasRenderer
 
     /// <summary>
     /// Renders the editor canvas to a bitmap matching the underlying image's pixel dimensions.
-    /// Temporarily disables the zoom transform so the saved image is at native resolution.
+    /// Temporarily disables the zoom and pan transforms so the saved image captures the full
+    /// frame at native resolution, regardless of how the user has panned/zoomed the editor view.
+    /// Both transforms are restored afterwards so the user doesn't see their viewport jump.
     /// </summary>
-    public static BitmapSource CaptureCanvasAsImage(FrameworkElement imageCanvas, BitmapSource originalImage, ScaleTransform zoomTransform)
+    public static BitmapSource CaptureCanvasAsImage(FrameworkElement imageCanvas, BitmapSource originalImage, ScaleTransform zoomTransform, TranslateTransform panTransform)
     {
         var imageWidth = originalImage.PixelWidth;
         var imageHeight = originalImage.PixelHeight;
 
         var originalScaleX = zoomTransform.ScaleX;
         var originalScaleY = zoomTransform.ScaleY;
+        var originalPanX = panTransform.X;
+        var originalPanY = panTransform.Y;
         zoomTransform.ScaleX = 1;
         zoomTransform.ScaleY = 1;
+        panTransform.X = 0;
+        panTransform.Y = 0;
 
         imageCanvas.Measure(new Size(imageWidth, imageHeight));
         imageCanvas.Arrange(new Rect(0, 0, imageWidth, imageHeight));
@@ -38,6 +44,8 @@ internal static class CanvasRenderer
 
         zoomTransform.ScaleX = originalScaleX;
         zoomTransform.ScaleY = originalScaleY;
+        panTransform.X = originalPanX;
+        panTransform.Y = originalPanY;
         imageCanvas.UpdateLayout();
 
         return renderBitmap;

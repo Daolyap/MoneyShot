@@ -444,7 +444,7 @@
             </Border>
 
             <!-- Main Canvas Area -->
-            <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+            <ScrollViewer Grid.Row="2" Name="EditorScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
                 <ScrollViewer.Background>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1" Opacity="0.3">
                         <GradientStop Color="#0a0a0a" Offset="0"/>
@@ -453,7 +453,10 @@
                 </ScrollViewer.Background>
                 <Grid Name="ImageCanvas" HorizontalAlignment="Center" VerticalAlignment="Center" UseLayoutRounding="True" SnapsToDevicePixels="True">
                     <Grid.RenderTransform>
-                        <ScaleTransform x:Name="ZoomTransform" ScaleX="1" ScaleY="1" CenterX="0" CenterY="0"/>
+                        <TransformGroup>
+                            <ScaleTransform x:Name="ZoomTransform" ScaleX="1" ScaleY="1" CenterX="0" CenterY="0"/>
+                            <TranslateTransform x:Name="PanTransform" X="0" Y="0"/>
+                        </TransformGroup>
                     </Grid.RenderTransform>
                     <Image Name="ImageDisplay" />
                     <Canvas Name="DrawingCanvas" 
